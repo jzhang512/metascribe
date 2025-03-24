@@ -49,7 +49,3 @@ extractor.export_results("metadata.jsonl")
 
 - Python 3.8+
 - Access to LLM API (OpenAI, etc.)
-
-## License
-
-[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
