@@ -1,0 +1,159 @@
+"""
+llm_interface.py
+
+Handles interactions with LLM providers.
+
+Currently supports:
+- OpenAI
+- Anthropic
+- Google Vertex
+- Together AI
+"""
+
+import os
+import time
+import base64
+from langchain_openai import ChatOpenAI
+# from langchain_anthropic import ChatAnthropic
+# from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_together import ChatTogether
+from langchain_core.messages import HumanMessage, SystemMessage
+from dotenv import load_dotenv
+
+# API keys.
+load_dotenv()
+openai_api_key = os.getenv("OPENAI_API_KEY")
+
+
+# Pre-defined models (and pricing as of 3/1/2025)
+# model_name: (provider, input price, output price)
+# Pricing is $ per 1 million tokens
+SUPPORTED_MODELS = {
+    "o1-2024-12-17": ("openai", 15/1000000, 60/1000000),
+    "gpt-4.5-preview-2025-02-27": ("openai", 75/1000000, 150/1000000),
+    "gpt-4o-2024-11-20": ("openai", 2.5/1000000, 10/1000000),
+    "gpt-4o-mini-2024-07-18": ("openai", 0.15/1000000, 0.60/1000000),
+    "gpt-4-turbo-2024-04-09": ("openai", 10/1000000, 30/1000000),
+    "claude-3-7-sonnet-20250219": ("anthropic", 3/1000000, 15/1000000),
+    "claude-3-5-sonnet-20241022": ("anthropic", 3/1000000, 15/1000000),
+    "claude-3-5-haiku-20241022": ("anthropic", 0.8/1000000, 4/1000000),
+    "claude-3-opus-20240229": ("anthropic", 15/1000000, 75/1000000),
+    "claude-3-haiku-20240307": ("anthropic", 0.25/1000000, 1.25/1000000),
+    "gemini-2.0-flash-001": ("google", 0.1/1000000, 0.4/1000000),
+    "gemini-2.0-flash-lite-001": ("google", 0.075/1000000, 0.3/1000000),
+    "gemini-1.5-flash-002": ("google", 0.075/1000000, 0.3/1000000),
+    "gemini-1.5-flash-8b-001": ("google", 0.0375/1000000, 0.15/1000000),
+    "gemini-1.5-pro-002": ("google", 1.25/1000000, 5/1000000),
+    "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo": ("together", 0.18/1000000, 0.18/1000000),
+    "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo": ("together", 1.2/1000000, 1.2/1000000),
+    "Qwen/Qwen2-VL-72B-Instruct": ("together", 1.2/1000000, 1.2/1000000),
+}
+
+
+def get_model_response(model_name, sys_prompt, user_prompt, image_path = None, structured_output_schema = None, **kwargs):
+    """
+    Master function for routing which LLM provider to get response from based on the model name.
+
+    Args:
+        model_name (str): The name of the model to use.
+        sys_prompt (str): The system prompt to use.
+        user_prompt (str): The user prompt to use.
+        image_path (str): The path to the image to use.
+        is_structured_output (bool): Whether to use structured output.
+        **kwargs: Additional arguments to pass to the model.
+
+    Returns:
+        dict: The response from the model.
+    """
+
+    if model_name not in SUPPORTED_MODELS:
+        raise ValueError(f"Model {model_name} is currently not supported. We currently support the following models: {SUPPORTED_MODELS.keys()}")
+    
+    provider, input_price, output_price = SUPPORTED_MODELS[model_name]
+
+    if provider == "openai":
+        return _get_openai_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs)
+    elif provider == "anthropic":
+        return _get_anthropic_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs)
+    elif provider == "google":
+        return _get_google_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs)
+    elif provider == "together":
+        return _get_together_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs)
+    
+
+# Helpers: get responses from various LLM providers.
+
+def _get_openai_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs):
+    """
+    Get a response from an OpenAI model.
+
+    Args:
+        model_name (str): The name of the model to use.
+        sys_prompt (str): The system prompt to use.
+        user_prompt (str): The user prompt to use.
+        image_path (str): The path to the image to use (none if no image given).
+        structured_output_schema (JsonSchema): The schema to use for structured output (none if no structured output is desired).
+        **kwargs: Additional arguments to pass to the model.
+
+    Returns:
+        The response from the model, the elapsed time, and the total cost of response.
+    """
+
+    llm = ChatOpenAI(model = model_name, **kwargs)
+
+    if structured_output_schema is not None:
+        llm = llm.with_structured_output(structured_output_schema)
+
+    messages = [
+        SystemMessage(content = sys_prompt),
+        HumanMessage(
+            content = [
+                {"type": "text", "text": user_prompt}
+            ]
+        )
+    ]
+
+    if image_path is not None:
+        image_base64, image_media_type = _encode_image(image_path)
+        messages[1].content.append(
+            {
+                "type": "image_url", 
+                "image_url": {"url":f"data:{image_media_type};base64,{image_base64}"}
+            }
+        )
+    
+    start_time = time.time()
+    response = llm.invoke(messages)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    cost = response.usage_metadata["input_tokens"] * input_price + response.usage_metadata["output_tokens"] * output_price
+
+    return response, elapsed_time, cost
+
+
+#def _get_anthropic_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs):
+ 
+#def _get_google_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs):
+
+#def _get_together_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs):
+
+
+# Helper: encodes local images into base64. Also returns media type.
+def _encode_image(image_path):
+    
+    if ".png" in os.path.basename(image_path):
+        image_media_type = "image/png"
+    elif ".jpg" in os.path.basename(image_path):
+        image_media_type = "image/jpeg"
+    else:
+        raise Exception("Unsupported image format given (must be PNG or JPEG).")
+    
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8"), image_media_type
+    
+
+if __name__ == "__main__":
+
+    image_path = "20_nnc1.cu01975331.jpg"
+    print(_get_openai_response("gpt-4o-mini-2024-07-18", "You are a helpful assistant.", "What is in this page?", image_path, None, 0.15/1000000, 0.60/1000000, temperature = 1.4))
