@@ -1,0 +1,173 @@
+{
+ "title": "TextPageAnalysis",
+ "description": "Schema for describing visual, semantic, and typographic features of a prosodic text page.",
+ "type": "object",
+ "properties": {
+   "visual": {
+     "type": "object",
+     "properties": {
+       "layout": {
+         "type": "string",
+         "description": "Dominant type of content formatting on the page. Must be one of the following: prose, verse, graphical, mixed.",
+         "oneOf":[
+            {
+              "const": "prose",
+              "description": "Covers explanatory texts, theoretical discussions, and analysis. The most 'basic' layout."
+            },
+            {
+              "const": "verse",
+              "description": "Poetry excerpts, often formatted with line breaks, indentation, and scansion marks."
+            },
+            {
+              "const": "graphical",
+              "description": "Visual aids (tables, charts, diagrams) explaining metrical or prosodic structures like scansion grids or foot diagrams."
+            },
+            {
+              "const": "mixed",
+              "description": "Pages that blend prose, verse, graphics, etc."
+            }
+          ]
+       },
+       "multi_column": {
+         "type": "boolean",
+         "description": "Whether the page layout uses more than one column."
+       },
+       "notations": {
+         "type": "array",
+         "description": "Types of notations and symbols present on the page. Must be a combination of the following: musical, metrical, diacritic, special, none.\n\nIf none, there should be nothing else in this field.",
+         "items": {
+          "type": "string",
+          "oneOf": [
+            {
+              "const": "musical",
+              "description": "Uses musical symbols (e.g., note values, rests, pitch markings) to represent rhythm or stress."
+            },
+            {
+              "const": "metrical",
+              "description": "Traditional scansion symbols: macrons (—), breves (˘), stress marks (´ `), foot divisions (|), caesura markers (‖)."
+            },
+            {
+              "const": "diacritic",
+              "description": "Phonetic/accentual markers (IPA stress marks ˈˌ, syllabic ː̆, tonal diacritics) to show linguistic prosody."
+            },
+            {
+              "const": "special",
+              "description": "Any unconventional or discipline-specific markings, including invented symbols, typographic experiments, or hybrid systems."
+            },
+            {
+              "const": "none",
+              "description": "No notations are used."
+            }
+          ]
+        }
+       },
+       "condition": {
+         "type": "array",
+         "description": "Physical conditions of the page. Must be a combination of the following: handwritten annotation, print anomaly, none. If none, there should be nothing else in this field.",
+          "items": {
+            "type": "string",
+            "oneOf": [
+              {
+                "const": "handwritten annotation",
+                "description": "Includes marginalia, scansion marks, corrections, or commentary added by people."
+              },
+              {
+                "const": "print anomaly",
+                "description": "Misprints, typographical errors, ink smudges, irregular spacing, or printing imperfections."
+              },
+              {
+                "const": "None",
+                "description": "No notable physical annotations or anomalies are present."
+              }
+            ]
+          }
+       }
+     },
+     "required": ["layout", "multi_column", "notations", "condition"]
+   },
+   "semantic": {
+     "type": "object",
+     "properties": {
+       "entities": {
+         "type": "array",
+         "description": "Named entities mentioned (people, works, institutions, places, theories, ideas, etc.).",
+         "items": {
+           "type": "string"
+         }
+       },
+       "theme": {
+         "type": "array",
+         "description": "Thematic domains of the content. Must be a combination of the following: metrical, phonetic, historical, grammatical, experimental, other. If other, there should be nothing else in this field.",
+         "items": {
+            "type": "string",
+            "oneOf": [
+              {
+                "const": "metrical",
+                "description": "Covers the study of meter, rhythm, and scansion, including discussions of metrical feet (iambs, trochees, dactyls, etc.), classical versus modern metrical structures, and theories of poetic rhythm."
+              },
+              {
+                "const": "phonetic",
+                "description": "Focuses on the intersection of prosody with phonetics and phonology, including stress, intonation, pitch, duration, and how prosody functions in spoken language."
+              },
+              {
+                "const": "historical",
+                "description": "Examines the evolution of prosodic traditions across different languages and cultures, comparing classical, medieval, and modern approaches."
+              },
+              {
+                "const": "grammatical",
+                "description": "Explores how prosody interacts with syntax, punctuation, phrasing, and rhetorical devices, including how rhythm and stress contribute to meaning and style in poetry and prose."
+              },
+              {
+                "const": "experimental",
+                "description": "Deliberately deviates from conventional prosodic structures through innovative techniques that challenge traditional forms."
+              },
+              {
+                "const": "other",
+                "description": "Other themes not listed above."
+              }
+            ]
+          }
+       },
+       "purpose": {
+         "type": "string",
+         "description": "Primary purpose of the content. Must be one of the following: expository, reference, instructional, other.",
+         "oneOf": [
+              {
+                "const": "Expository",
+                "description": "Explains prosodic concepts, theories, and principles in detail, often providing interpretations and critical analysis of poetic structure."
+              },
+              {
+                "const": "Reference",
+                "description": "Serves as a resource for looking up definitions, rules, or examples (e.g., glossaries, handbooks, encyclopedias of meter and rhythm)."
+              },
+              {
+                "const": "Instructional",
+                "description": "Intended for learning or practice (e.g., scansion exercises, drills, guides)."
+              },
+              {
+                "const": "Other",
+                "description": "A purpose not otherwise specified."
+              }
+            ]
+       },
+       "major_section_start": {
+         "type": "boolean",
+         "description": "Whether the page contains the start of a major structural division (e.g., chapter, book, part) that represents one of the primary divisions of the complete work. Look for explicit headings, large decorative elements, or significant white space that clearly marks a major break in content."
+       },
+       "language": {
+         "type": "array",
+         "description": "Languages used on the page. Don't forget to include English if it's present.",
+         "items": {
+           "type": "string"
+         }
+       }
+     },
+     "required": ["theme", "purpose", "major_section_start", "language"]
+   },
+   "typographic_unique": {
+     "type": "boolean",
+     "description": "Indicates whether the page should be classified as typographically unique (TU) per the Princeton Prosody Archive’s criteria. TU pages include texts that use uncommon or visually complex systems to represent prosody—such as musical notation, invented diacritical marks, phonetic scripts, symbolic diagrams, or hybrid schemes—that deviate from standard English typography. These features often disrupt OCR performance and go beyond expected conventions for the genre (e.g., phonetic marks in dictionaries). Classification depends on both the presence of prosodic meaning in the markings and whether they exceed the norms of the document's format or genre."
+   }
+ },
+ "required": ["visual", "semantic", "typographic_unique"]
+}
