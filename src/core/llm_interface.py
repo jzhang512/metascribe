@@ -14,16 +14,19 @@ import os
 import time
 import base64
 from langchain_openai import ChatOpenAI
-# from langchain_anthropic import ChatAnthropic
-# from langchain_google_genai import ChatGoogleGenerativeAI
-# from langchain_together import ChatTogether
+from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_together import ChatTogether
 from langchain_core.messages import HumanMessage, SystemMessage
 from dotenv import load_dotenv
 
 # API keys.
+# Ensure the names are:
+# OPENAI_API_KEY
+# ANTHROPIC_API_KEY
+# GOOGLE_API_KEY
+# TOGETHER_API_KEY
 load_dotenv()
-openai_api_key = os.getenv("OPENAI_API_KEY")
-
 
 # Pre-defined models (and pricing as of 3/1/2025)
 # model_name: (provider, input price, output price)
@@ -71,35 +74,16 @@ def get_model_response(model_name, sys_prompt, user_prompt, image_path = None, s
     
     provider, input_price, output_price = SUPPORTED_MODELS[model_name]
 
+    # Route to right LLM provider.
     if provider == "openai":
-        return _get_openai_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs)
+        llm = ChatOpenAI(model = model_name, **kwargs)
     elif provider == "anthropic":
-        return _get_anthropic_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs)
+        llm = ChatAnthropic(model = model_name, **kwargs)
     elif provider == "google":
-        return _get_google_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs)
+        llm = ChatGoogleGenerativeAI(model = model_name, **kwargs)
     elif provider == "together":
-        return _get_together_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs)
+        llm = ChatTogether(model = model_name, **kwargs)
     
-
-# Helpers: get responses from various LLM providers.
-
-def _get_openai_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs):
-    """
-    Get a response from an OpenAI model.
-
-    Args:
-        model_name (str): The name of the model to use.
-        sys_prompt (str): The system prompt to use.
-        user_prompt (str): The user prompt to use.
-        image_path (str): The path to the image to use (none if no image given).
-        structured_output_schema (JsonSchema): The schema to use for structured output (none if no structured output is desired).
-        **kwargs: Additional arguments to pass to the model.
-
-    Returns:
-        The response from the model, the elapsed time, and the total cost of response.
-    """
-
-    llm = ChatOpenAI(model = model_name, **kwargs)
 
     if structured_output_schema is not None:
         llm = llm.with_structured_output(structured_output_schema)
@@ -129,15 +113,11 @@ def _get_openai_response(model_name, sys_prompt, user_prompt, image_path, struct
 
     cost = response.usage_metadata["input_tokens"] * input_price + response.usage_metadata["output_tokens"] * output_price
 
+    # Google AI doesn't include model used.
+    if provider == "google":
+        response.response_metadata["model_name"] = model_name
+    
     return response, elapsed_time, cost
-
-
-#def _get_anthropic_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs):
- 
-#def _get_google_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs):
-
-#def _get_together_response(model_name, sys_prompt, user_prompt, image_path, structured_output_schema, input_price, output_price, **kwargs):
-
 
 # Helper: encodes local images into base64. Also returns media type.
 def _encode_image(image_path):
@@ -155,5 +135,23 @@ def _encode_image(image_path):
 
 if __name__ == "__main__":
 
+    # Tests.
     image_path = "20_nnc1.cu01975331.jpg"
-    print(_get_openai_response("gpt-4o-mini-2024-07-18", "You are a helpful assistant.", "What is in this page?", image_path, None, 0.15/1000000, 0.60/1000000, temperature = 1.4))
+
+    # Purely text.
+    print(get_model_response("gpt-4o-mini-2024-07-18", "You are a helpful assistant.", "what's in this page?", None, None), "\n\n----------------")
+    print(get_model_response("claude-3-5-sonnet-20241022", "You are a helpful assistant.", "what's in this page?", None, None), "\n\n----------------")
+    print(get_model_response("gemini-2.0-flash-001", "You are a helpful assistant.", "what's in this page?", None, None), "\n\n----------------")
+    print(get_model_response("meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo", "You are a helpful assistant.", "what's in this page?", None, None), "\n\n----------------")
+
+    # Text and image.
+    print(get_model_response("gpt-4o-mini-2024-07-18", "You are a helpful assistant.", "what's in this page?", image_path, None), "\n\n----------------")
+    print(get_model_response("claude-3-5-sonnet-20241022", "You are a helpful assistant.", "what's in this page?", image_path, None), "\n\n----------------")
+    print(get_model_response("gemini-2.0-flash-001", "You are a helpful assistant.", "what's in this page?", image_path, None), "\n\n----------------")
+    print(get_model_response("meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo", "You are a helpful assistant.", "what's in this page?", image_path, None), "\n\n----------------")
+
+    # Extra parameters.
+    print(get_model_response("gpt-4o-mini-2024-07-18", "You are a helpful assistant.", "what's in this page?", image_path, None, max_tokens = 2), "\n\n----------------")
+    print(get_model_response("claude-3-5-sonnet-20241022", "You are a helpful assistant.", "what's in this page?", image_path, None, max_tokens = 2), "\n\n----------------")
+    print(get_model_response("gemini-2.0-flash-001", "You are a helpful assistant.", "what's in this page?", image_path, None, max_tokens = 2), "\n\n----------------")
+    print(get_model_response("meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo", "You are a helpful assistant.", "what's in this page?", image_path, None, max_tokens = 2), "\n\n----------------")
