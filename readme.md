@@ -1,5 +1,5 @@
 # MetaScribe
-![image](https://github.com/user-attachments/assets/cd60a64c-e60b-4555-97e0-e308c3488b9c)
+![image](https://github.com/user-attachments/assets/8ed98e8c-9656-4e7c-8419-97642897341f)
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
