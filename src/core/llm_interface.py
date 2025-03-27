@@ -69,7 +69,7 @@ def get_model_response(model_name: str, sys_prompt: str, user_prompt: str, image
         **kwargs: Additional arguments to pass to the model.
 
     Returns:
-        dict: The response from the model.
+        (response, elapsed_time, cost): The response from the model, the time it took to generate the response, and the cost of the response.
     """
 
     if model_name not in SUPPORTED_MODELS:
