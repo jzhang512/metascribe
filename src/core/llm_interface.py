@@ -135,7 +135,7 @@ def get_model_response(model_name: str, sys_prompt: str, user_prompt: str, image
             content = _validate_together_output(response.content, structured_output_schema)
 
             if content is None:
-                parsed_data = "LLM response not structured as expected."
+                parsed_data = "error: LLM response not structured as expected."
                 parsing_error = True
             else:
                 parsed_data = content
@@ -146,7 +146,7 @@ def get_model_response(model_name: str, sys_prompt: str, user_prompt: str, image
             response = response["raw"]
 
             if parsing_error is not None:
-                parsed_data = "LLM response not structured as expected."
+                parsed_data = "error: LLM response not structured as expected."
 
 
         if not hasattr(response, "additional_kwargs") or response.additional_kwargs is None:
@@ -177,7 +177,6 @@ def _validate_together_output(response: str, structured_output_schema: dict):
         str: JSON if valid, None if invalid
     """
     try:
-        print (response, "\n\n\n")
         # Find the first { and last }
         start_idx = response.find('{')
         end_idx = response.rfind('}')

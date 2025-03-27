@@ -1,0 +1,32 @@
+{
+ "title": "GenerativeMetadata",
+ "description": "Schema for capturing specific metadata about a page in a work related to prosody.",
+ "type": "object",
+ "properties": {
+   "summary": {
+     "type": "string",
+     "description": "A 3-4 sentence summary that captures both the page's semantic content and visual elements. Should highlight connections between textual and visual components where relevant."
+   },
+   "key_topics": {
+     "type": "array",
+     "description": "A list of up to 3 key terms or phrases describing the main topics covered by the page.",
+     "items": {
+       "type": "string"
+     },
+     "maxItems": 3
+   },
+   "notation_terms": {
+     "type": "array",
+     "description": "A list of up to 5 terms or phrases describing the specific symbols or notational systems (if any)used on the page.",
+     "items": {
+       "type": "string"
+     },
+     "maxItems": 5
+   },
+   "uniqueness":{
+    "type": "string",
+    "description": "A 2-3 sentence explanation ONLY for pages that are particularly noteworthy or unexpected within its specific context or genre (i.e. those that deliberately deviate from conventional prosodic structures, employ innovative techniques that challenge traditional forms, or present highly unusual content). This field MUST be left blank for pages that are merely interesting but not genuinely distinctive."
+   }
+ },
+ "required": ["summary", "key_topics", "notation_terms", "uniqueness"]
+}
