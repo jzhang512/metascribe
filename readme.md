@@ -1,4 +1,5 @@
 # MetaScribe
+![image](https://github.com/user-attachments/assets/8ed98e8c-9656-4e7c-8419-97642897341f)
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -7,22 +8,22 @@
 
 ## Overview
 
-MetaScribe automates metadata creation for libraries and archives by extracting (structured) information from digitized documents using language models. Process documents page-by-page with customizable extraction schemas.
+MetaScribe automates metadata creation for libraries and archives by extracting (structured) information from digitized documents using modern large language models. Process documents page-by-page with flexible extraction schemas, all defined by your needs.
 
 ## Features
 
-- Customizable metadata schemas
+- Structured customizable metadata schemas
 - Page-by-page extraction
 - Preview and batch processing for metadata creation
 - JSONL output format
 
 ## How It Works
 
-1. **Define Schema**: Organize your extraction needs into a criterion of sections with specific questions
-2. **Review Prompts**: System generates LLM prompts from your schema
-3. **Preview**: Test on sample documents
-4. **Process**: Run extraction on full collection
-5. **Export**: Save metadata in JSONL format
+1. **Upload Your Documents**: Drop your files into the input directory — organize by collection or batch
+2. **Define Your Schema**: Specify what metadata you want using a customizable JSON Schema
+3. **Preview the Output**: Run a quick sample to check accuracy and adjust before full processing
+4. **Extract Metadata**: Process your full collection with a single command — fast and scalable
+5.** Export in JSONL**: Get structured metadata for each page, ready to use or archive
 
 ## Basic Usage
 
