@@ -7,7 +7,7 @@
 
 ## Overview
 
-MetaScribe automates metadata creation for libraries and archives by extracting (structured) information from digitized documents using language models. Process documents page-by-page with customizable extraction schemas.
+MetaScribe automates metadata creation for libraries and archives by extracting (structured) information from digitized documents using language models. Process documents page-by-page with flexible, user-defined extraction schemas.
 
 ## Features
 
@@ -18,10 +18,10 @@ MetaScribe automates metadata creation for libraries and archives by extracting 
 
 ## How It Works
 
-1. **Define Schema**: Organize your extraction needs into a criterion of sections with specific questions
-2. **Review Prompts**: System generates LLM prompts from your schema
-3. **Preview**: Test on sample documents
-4. **Process**: Run extraction on full collection
+1. **Define Schema**: Organize your extraction needs into a criterion of sections with specific questions (JSON Schema format)
+2. **Review Prompts**: MetaScribe will generate LLM prompts from your schema
+3. **Preview**: Optionally test on your sample documents 
+4. **Process**: Run extraction on your full collection
 5. **Export**: Save metadata in JSONL format
 
 ## Basic Usage
