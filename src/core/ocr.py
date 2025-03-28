@@ -5,7 +5,6 @@ Run OCR on given images with LLM APIs.
 """
 
 from core.llm_interface import get_model_response
-import json
 import os
 
 DEFAULT_SYSTEM_PROMPT = """
@@ -56,7 +55,7 @@ def generate_single_ocr(model_name: str, image_path: str, system_prompt: str = D
 
         print(f"OCRed {image_id}")
     except Exception as e:
-        print(f"ERROR: OCRing {image_id}... retrying with different model.")
+        print(f"ERROR: OCRing {image_id}")
 
         ocr_entry = {
             "id": image_id,
@@ -69,3 +68,6 @@ def generate_single_ocr(model_name: str, image_path: str, system_prompt: str = D
             ocr_entry["cost"] = cost
 
     return ocr_entry
+
+if __name__ == "__main__":
+    print(generate_single_ocr("gpt-4o-mini-2024-07-18", "20_nnc1.cu01975331.jpg"))

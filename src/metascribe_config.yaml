@@ -6,6 +6,19 @@ preprocessing:
     max_image_width: 2000
     max_image_height: 2000
   binarization:
-    jar_path: "filler_tbd"
+    jar_path: "resources/ZigZag.jar"
+
+
+# Metadata Generation
+metadata_generation:
+  json_schema_path: "ppa_examples/additional_generative_metadata.json"
+  llm_model: "gemini-2.0-flash-001"
+
+
+# OCR
+ocr:
+  model: "gemini-2.0-flash-001"
+
+
 
   
