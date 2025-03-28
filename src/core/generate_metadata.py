@@ -33,7 +33,7 @@ def generate_single_metadata(model_name: str, image_path: str, json_schema: dict
         **kwargs: Additional arguments to pass to the LLM.
 
     Returns:
-        Response (in JSON format) from the LLM.
+        Response (dict in JSON format) from the LLM.
     """
 
     elapsed_time = None
@@ -68,10 +68,10 @@ def generate_single_metadata(model_name: str, image_path: str, json_schema: dict
                 metadata_entry["logprobs"] = response.response_metadata.get("logprobs")
 
 
-        print(f"{_get_printable_time()} - Processed image: {image_id} with {model_name} in {elapsed_time} s")
+        print(f"{_get_printable_time()} - generated metadata for image: {image_id} with {model_name} in {elapsed_time} s")
 
     except Exception as e:
-        print(f"{_get_printable_time()} - ERROR: processing image {image_id} with {model_name}: {str(e)}")
+        print(f"{_get_printable_time()} - ERROR: generating metadata for image {image_id} with {model_name}: {str(e)}")
 
         metadata_entry = {
             "model_name": model_name,
