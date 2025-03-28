@@ -94,7 +94,8 @@ class MetaScribeController:
                 return
             
         os.makedirs(output_dir, exist_ok=True)
-
+        metadata_dir = os.path.join(output_dir, "metadata")
+        os.makedirs(metadata_dir, exist_ok=True)
 
         # Get list of files in input directory
         ACCEPTABLE_EXTENSIONS = (".png", ".jpeg", ".jpg", ".pdf")
@@ -128,9 +129,6 @@ class MetaScribeController:
         
         
         # Preprocess files serially.
-        metadata_dir = os.path.join(output_dir, "metadata")
-        os.makedirs(metadata_dir, exist_ok=True)
-        
         manifest = {"files": []}
 
         for file_name in files_to_process:
@@ -205,11 +203,36 @@ class MetaScribeController:
                         binarized_image.save(binarized_path)
 
 
-                    # STEP 2: Metadata generation via resized images.
-                    
+                    # STEP 2 & 3: Metadata generation via resized images; OCR via resized & binarized images.
+                    print(f"Preprocessing {file_name} complete. Generating metadata and OCRing...")
+                    doc_metadata_path = os.path.join(metadata_dir, f"{work_id}.jsonl")
 
-                    # STEP 3: OCR via resized & binarized images.
+                    with open(doc_metadata_path, "a") as f:
+                        for page in os.listdir(resized_dir):       # page filename is already id
+                            resized_page_path = os.path.join(resized_dir, page)
+                            binarized_page_path = os.path.join(binarized_dir, page)
 
+                            metadata = generate_single_metadata(
+                                model_name=self.config["metadata_generation"]["llm_model"],
+                                image_path=resized_page_path,
+                                json_schema=self.config["metadata_generation"]["json_schema_path"],
+                                system_prompt=self.config["metadata_generation"]["system_prompt"],
+                                user_prompt=self.config["metadata_generation"]["user_prompt"]
+                            )
+
+                            ocr_data = generate_single_ocr(
+                                model_name=self.config["ocr"]["model"],
+                                image_path=binarized_page_path,
+                                system_prompt=self.config["ocr"]["system_prompt"],
+                                user_prompt=self.config["ocr"]["user_prompt"]
+                            )
+
+                            if "id" in ocr_data:
+                                del ocr_data["id"]
+
+                            metadata["ocr"] = ocr_data
+                        # TODO: add desingated aggregated fields to a list and then do .join on them, then call aggregation function
+    
                     # STEP 4: Metadata aggregation.
                 
                 except Exception as e:

@@ -14,11 +14,15 @@ preprocessing:
 metadata_generation:
   json_schema_path: "ppa_examples/additional_generative_metadata.json"
   llm_model: "gemini-2.0-flash-001"
+  system_prompt: "You are a metadata generator. Your task is to generate metadata from a given image and JSON schema."
+  user_prompt: "Based on the image and JSON schema, generate metadata for the image."
 
 
 # OCR
 ocr:
   model: "gemini-2.0-flash-001"
+  system_prompt: "You are an OCR assistant. Extract and return only the text from the image. Do NOT add any extra explanations, formatting, or special markdown commands. Output plain text only."
+  user_prompt: ""Extract and return the text from this image according to these principles:\n\n- Capture all Unicode-compatible characters, including symbols and special characters.\n- Preserve the author's intended meaning and formatting.\n- Do not correct grammar, spelling, or typographic errors—transcribe them exactly as they appear.\n\nDO NOT add any extra explanations, formatting, or special markdown commands.""
 
 
 
