@@ -8,10 +8,13 @@ import yaml
 import os
 import json
 import tempfile
+import fitz
+from PIL import Image
 
 from core.generate_metadata import generate_single_metadata
 from core.ocr import generate_single_ocr
-from core.preprocessing_document import resize_images
+from core.preprocessing_document import resize_image, binarize_image
+
 
 class MetaScribeController:
     """
@@ -60,6 +63,7 @@ class MetaScribeController:
         """
         Process all documents in the input directory and save the results in the output directory.
             - Documents must be in PDF, JPG, or PNG format
+            - Will use document's basename as ID for naming purposes
 
         Args:
             input_dir (str): The directory containing user's documents to process.
@@ -92,7 +96,6 @@ class MetaScribeController:
         os.makedirs(output_dir, exist_ok=True)
 
 
-
         # Get list of files in input directory
         ACCEPTABLE_EXTENSIONS = (".png", ".jpeg", ".jpg", ".pdf")
         files_to_process = [
@@ -116,7 +119,6 @@ class MetaScribeController:
                 print("MetaScribe pipeline aborted by user (unsupported file extensions).")
                 return
             
-
         
         # Check for exisiting processed files.
         files_to_process = self._check_for_already_processed_files(output_dir, files_to_process)
@@ -132,16 +134,105 @@ class MetaScribeController:
         manifest = {"files": []}
 
         for file_name in files_to_process:
+            print(f"Processing {file_name}")
+            file_path = os.path.join(input_dir, file_name)
+            file_extension = os.path.splitext(file_name)[1].lower()
+            work_id = os.path.splitext(file_name)[0]    # use basename as ID for naming
 
-            # STEP 1: Preprocessing -- resizing & binarization.
-           
+            # Temporary directory to hold temp files while processing.
+            with tempfile.TemporaryDirectory() as temp_dir:
+                try:
+                    # Subdirectories for images after pre-processing.
+                    # STEP 1: Preprocessing -- resizing & binarization.
+                    resized_dir = os.path.join(temp_dir, "resized")
+                    binarized_dir = os.path.join(temp_dir, "resized_binarized")
 
-            # STEP 2: Metadata generation.
+                    os.makedirs(resized_dir, exist_ok=True)
+                    os.makedirs(binarized_dir, exist_ok=True)
 
-            # STEP 3: OCR.
+                    # Resolve ZigZag.jar path.
+                    project_core = os.path.dirname(os.path.abspath(__file__))
+                    zigzag_jar_path = os.path.join(project_core, self.config["preprocessing"]["binarization"]["jar_path"])
+                    
+                    # PDF files.
+                    if file_extension == ".pdf":
+                        
+                        pdf_doc = fitz.open(file_path)
+                        total_pages = len(pdf_doc)
 
-            # STEP 4: Metadata aggregation.
+                        for page_num in range(total_pages):
+                            page_idx = page_num + 1
+                            page_id = f"{page_idx}_{work_id}"
 
+                            page = pdf_doc[page_num]
+                            pix = page.get_pixmap(matrix=fitz.Matrix(self.config["preprocessing"]["pdf_image_dpi"] / 72, self.config["preprocessing"]["pdf_image_dpi"] / 72), alpha=False)
+                            image_pil = self._pix_to_PIL(pix)
+
+                            # Resizing.
+                            resized_path = os.path.join(resized_dir, f"{page_id}.jpg")
+                            resized_image = resize_image(image_pil,
+                                                         max_width=self.config["preprocessing"]["resize"]["max_image_width"],
+                                                         max_height=self.config["preprocessing"]["resize"]["max_image_height"])
+                            resized_image.save(resized_path)
+
+                            # Binarization.
+                            binarized_path = os.path.join(binarized_dir, f"{page_id}.jpg")
+                            binarized_image = binarize_image(
+                                resized_image,
+                                jar_path=zigzag_jar_path
+                            )
+                            binarized_image.save(binarized_path)
+
+                        
+                        pdf_doc.close()
+                    else:           # only jpg, png beyond this point
+
+                        image_pil = Image.open(file_path)
+
+                        # Resizing.
+                        resized_path = os.path.join(resized_dir, f"{work_id}.jpg")  # use work_id for single images
+                        resized_image = resize_image(image_pil,
+                                                     max_width=self.config["preprocessing"]["resize"]["max_image_width"],
+                                                     max_height=self.config["preprocessing"]["resize"]["max_image_height"])
+                        resized_image.save(resized_path)
+
+                        # Binarization.
+                        binarized_path = os.path.join(binarized_dir, f"{work_id}.jpg")
+                        binarized_image = binarize_image(
+                            resized_image,
+                            jar_path=zigzag_jar_path
+                        )
+                        binarized_image.save(binarized_path)
+
+
+                    # STEP 2: Metadata generation via resized images.
+                    
+
+                    # STEP 3: OCR via resized & binarized images.
+
+                    # STEP 4: Metadata aggregation.
+                
+                except Exception as e:
+                    continue
+
+
+    def _pix_to_PIL(self, pix):
+        """
+        Convert a fitz.Pixmap to a PIL Image.
+
+        Args:
+            pix (fitz.Pixmap): The pixmap to convert.
+
+        Returns:
+            PIL.Image.Image: The converted image.
+        """
+        
+        img_data = pix.samples
+        img_mode = "RGB" if pix.n == 3 else "RGBA" if pix.n == 4 else "L"
+        image_pil = Image.frombytes(img_mode, (pix.width, pix.height), img_data)
+
+        return image_pil
+        
 
     def _check_for_already_processed_files(self, output_dir, files_to_process):
         """
