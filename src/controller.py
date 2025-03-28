@@ -81,7 +81,11 @@ class MetaScribeController:
         os.makedirs(output_dir, exist_ok=True)
 
         # Get list of files in input directory
-        files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
+        ACCEPTABLE_EXTENSIONS = (".png", ".jpeg", ".jpg", ".pdf")
+        files_to_process = [
+            f for f in os.listdir(input_dir) 
+            if os.path.isfile(os.path.join(input_dir, f) and f.lower().endswith(ACCEPTABLE_EXTENSIONS))
+        ]
 
         # Preprocess files serially.
 
