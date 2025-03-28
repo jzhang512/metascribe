@@ -1,0 +1,11 @@
+# MetaScribe Configuration (Default)
+
+# Preprocessing
+preprocessing:
+  resize:
+    max_image_width: 2000
+    max_image_height: 2000
+  binarization:
+    jar_path: "filler_tbd"
+
+  
