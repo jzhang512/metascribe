@@ -34,6 +34,7 @@ class MetaScribeController:
             config_path (str, optional): Path to the YAML configuration file.
                 If None, looks in environment and current working directory.
         """
+        self.config = None
 
         config_locations = [
             config_path,
@@ -46,10 +47,10 @@ class MetaScribeController:
                 try:
                     with open(loc, "r") as f:
                         self.config = yaml.safe_load(f)
-                        print(f"Successfully loaded configuration from {loc}")
+                        print(f"Successfully loaded configuration from {loc}\n\n")
                         break
                 except Exception as e:
-                    print(f"Error loading configuration from {loc}: {e}")
+                    print(f"Error loading configuration from {loc}: {e}\n\n")
                     continue
 
         if not self.config:
@@ -82,12 +83,12 @@ class MetaScribeController:
             |---- manifest. json
         """
 
-        print(f"Starting MetaScribe pipeline for {input_dir}...")
+        print(f"Starting MetaScribe pipeline for {input_dir}...\n\n")
 
         # Set up output directory.
         if output_dir is None:
             output_dir = os.path.join(os.getcwd(), "metascribe_output")
-            print(f"No output directory provided, using default: {output_dir}")
+            print(f"No output directory provided, using default: {output_dir}\n\n")
 
         if os.path.exists(output_dir):
             user_response = input(f"WARNING: Output directory {output_dir} already exists. Continue? (y/n): ")
@@ -103,13 +104,14 @@ class MetaScribeController:
         ACCEPTABLE_EXTENSIONS = (".png", ".jpeg", ".jpg", ".pdf")
         files_to_process = [
             f for f in os.listdir(input_dir) 
-            if os.path.isfile(os.path.join(input_dir, f) and f.lower().endswith(ACCEPTABLE_EXTENSIONS))
+            if os.path.isfile(os.path.join(input_dir, f)) and f.lower().endswith(ACCEPTABLE_EXTENSIONS)
         ]
+
         if len(files_to_process) == 0:
             print("Exiting... no files given to process.")
             return
         else:
-            print(f"Given {len(files_to_process)} files to process.")
+            print(f"Given {len(files_to_process)} files to process.\n\n")
 
         unaccepted_files = [
             f for f in os.listdir(input_dir)
@@ -139,7 +141,7 @@ class MetaScribeController:
             total_cost = 0
             total_elapsed_time = 0
 
-            print(f"Processing {file_name}")
+            print(f"Processing {file_name}\n\n")
             file_path = os.path.join(input_dir, file_name)
             file_extension = os.path.splitext(file_name)[1].lower()
             work_id = os.path.splitext(file_name)[0]    # use basename as ID for naming
@@ -179,17 +181,18 @@ class MetaScribeController:
                                                          max_width=self.config["preprocessing"]["resize"]["max_image_width"],
                                                          max_height=self.config["preprocessing"]["resize"]["max_image_height"])
                             resized_image.save(resized_path)
-
+                            
                             # Binarization.
                             binarized_path = os.path.join(binarized_dir, f"{page_id}.jpg")
                             binarized_image = binarize_image(
                                 resized_image,
                                 jar_path=zigzag_jar_path
                             )
+                      
                             binarized_image.save(binarized_path)
-
-                        
+         
                         pdf_doc.close()
+                        
                     else:           # only jpg, png beyond this point
 
                         image_pil = Image.open(file_path)
@@ -211,7 +214,7 @@ class MetaScribeController:
 
 
                     # STEP 2 & 3: Metadata generation via resized images; OCR via resized & binarized images.
-                    print(f"Preprocessing {file_name} complete. Generating metadata and OCRing...")
+                    print(f"Preprocessing {file_name} complete. Generating metadata and OCRing...\n\n")
                     doc_metadata_path = os.path.join(metadata_dir, f"{work_id}.jsonl")
                     # TODO: will need to check if this already exists, if so, see WHERE to pick up and start appending (make a note of this).
                     # If exists, get pages that had been processed --> what more to process? Modify line 228
@@ -225,14 +228,19 @@ class MetaScribeController:
 
                     # Generate metadata and OCR.
                     with open(doc_metadata_path, "a") as f:
-                        for page in os.listdir(resized_dir):       # page filename is already id
+                        sorted_order = sorted(os.listdir(resized_dir), key=lambda x: int(x.split("_")[0]))
+                       
+                        for page in sorted_order:       # page filename is already id
+                            
                             resized_page_path = os.path.join(resized_dir, page)
                             binarized_page_path = os.path.join(binarized_dir, page)
+
+                            metadata_schema = json.load(open(self.config["metadata_generation"]["json_schema_path"]))
 
                             page_metadata = generate_single_metadata(
                                 model_name=self.config["metadata_generation"]["llm_model"],
                                 image_path=resized_page_path,
-                                json_schema=self.config["metadata_generation"]["json_schema_path"],
+                                json_schema=metadata_schema,
                                 system_prompt=self.config["metadata_generation"]["system_prompt"],
                                 user_prompt=self.config["metadata_generation"]["user_prompt"]
                             )
@@ -258,12 +266,20 @@ class MetaScribeController:
                             f.flush()
 
                             for field in fields_to_aggregate:
-                                aggregated_metadata[field].append(page_metadata[field])
+                                if page_metadata["metadata"][field] is not None and page_metadata["metadata"][field].strip():
+                                    aggregated_metadata[field].append(page_metadata["metadata"][field])
     
                     # STEP 4: Metadata aggregation (represented at work-level).
-                    print(f"Metadata generation and OCR complete for {file_name}. Aggregating metadata...")
+                    print(f"Metadata generation and OCR complete for {file_name}. Aggregating metadata...\n\n")
                     aggregation_to_save = {f"{work_id}_aggregated": True}   # to flag aggregated metadata in jsonl
                     for field in fields_to_aggregate:
+
+                        # Skip aggregation if list is empty.
+                        if not aggregated_metadata[field]:
+                            print(f"{work_id} - Skipping aggregation for {field} (no data).")
+                            aggregation_to_save[field] = {"result": "No data available for aggregation."}
+                            continue
+
                         concatenated_field_data = "\n\n".join(aggregated_metadata[field])
 
                         summary_result = generate_single_aggregated_metadata(
@@ -293,7 +309,7 @@ class MetaScribeController:
                         "total_processing_time": total_elapsed_time,
                         "total_cost": total_cost
                     })
-                    print(f"Successfully processed {file_name}.")
+                    print(f"Successfully processed {file_name}.\n\n")
 
                 except Exception as e:      # log file processing as failed
                     failed_processed_count += 1
@@ -382,22 +398,22 @@ class MetaScribeController:
                             if isinstance(file_entry, dict) and "original_file" in file_entry:
                                 already_processed.add(file_entry["original_file"])
 
-                        print(f"Found {len(already_processed)} files that have already been processed.")
+                        print(f"Found {len(already_processed)} files that have already been processed.\n\n")
 
             except Exception as e:
-                print(f"Error loading manifest from {manifest_path}: {e}\n\nWill process all {len(files_to_process)} files.")
+                print(f"Error loading manifest from {manifest_path}: {e}\n\nWill process all {len(files_to_process)} files.\n\n")
                 already_processed = set()
-
-        filtered_files = [f for f in files_to_process if not f in already_processed]
 
          # Resume or start fresh?
         if already_processed:
             user_response = input(f"Resume processing (y) or start fresh (n)? ")
             if user_response.lower() in ("n", "no"):
                 already_processed = set()
-                print(f"Starting fresh... reprocessing all {len(files_to_process)} files.")
+                print(f"Starting fresh... reprocessing all {len(files_to_process)} files.\n\n")
             else:
-                print(f"Resuming processing ({len(filtered_files)} files), skipping already processed files.")
+                print(f"Resuming processing ({len(filtered_files)} files), skipping already processed files.\n\n")
+
+        filtered_files = [f for f in files_to_process if not f in already_processed]
 
         return filtered_files
         

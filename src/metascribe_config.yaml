@@ -20,13 +20,13 @@ metadata_generation:
 ocr:
   model: "gemini-2.0-flash-001"
   system_prompt: "You are an OCR assistant. Extract and return only the text from the image. Do NOT add any extra explanations, formatting, or special markdown commands. Output plain text only."
-  user_prompt: ""Extract and return the text from this image according to these principles:\n\n- Capture all Unicode-compatible characters, including symbols and special characters.\n- Preserve the author's intended meaning and formatting.\n- Do not correct grammar, spelling, or typographic errors—transcribe them exactly as they appear.\n\nDO NOT add any extra explanations, formatting, or special markdown commands.""
+  user_prompt: "Extract and return the text from this image according to these principles:\n\n- Capture all Unicode-compatible characters, including symbols and special characters.\n- Preserve the author's intended meaning and formatting.\n- Do not correct grammar, spelling, or typographic errors—transcribe them exactly as they appear.\n\nDO NOT add any extra explanations, formatting, or special markdown commands."
 
 # Aggregation
 aggregation:
   llm_model: "gemini-2.0-flash-001"
   included_fields: ["page_summary", "uniqueness"]   # must correspond to the JSON schema fields in metadata_generation (using the keys)
   system_prompt: "You are a specialized document metadata processor creating summaries that will be converted to vector embeddings for semantic search. Your task is to produce summaries optimized for embedding performance.\n\nIMPORTANT: Only summarize information explicitly provided in the metadata fields. Do not speculate, infer, or add any information not directly present.\n\nGuidelines:\n- Create semantically dense sentences\n- Prioritize domain-specific terminology and key concepts\n- If relevant to the document, include specific entities and proper nouns\n- Minimize filler words and focus on content-rich language\n- Ensure conceptual completeness rather than stylistic elegance\n\nYour output must effectively capture the document's semantic essence for both human readers and vector-based retrieval systems."
-  user_prompt: ""Based on the following aggregated page-level document metadata, create a 3-4 sentence summary that captures the most essential elements.\n\nMinimize filler words and only summarize information explicitly provided in the metadata -- do not speculate, infer, or add any information not present.\n\nMake sure the summary is precisely 3-4 sentences long as it will be used to generate vector embeddings.\n\n--------------------\n\n""
+  user_prompt: "Based on the following aggregated page-level document metadata, create a 3-4 sentence summary that captures the most essential elements.\n\nMinimize filler words and only summarize information explicitly provided in the metadata -- do not speculate, infer, or add any information not present.\n\nMake sure the summary is precisely 3-4 sentences long as it will be used to generate vector embeddings.\n\n--------------------\n\n"
 
   

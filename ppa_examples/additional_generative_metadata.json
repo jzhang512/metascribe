@@ -5,7 +5,7 @@
  "properties": {
    "page_summary": {
      "type": "string",
-     "description": "A 3-4 sentence summary that captures both the page's semantic content and visual elements. Where relevant, highlight connections between textual and visual components.\n\nIMPORTANT: Do not speculate, infer, or add any information not directly present in the page."
+     "description": "A 3-4 sentence summary that captures both the page's semantic content and visual elements. Where relevant, highlight connections between textual and visual components.\n\nIMPORTANT: Do not speculate, infer, or add any information not directly present in the page. Minimize filler words."
    },
    "key_topics": {
      "type": "array",
@@ -13,20 +13,20 @@
      "items": {
        "type": "string"
      },
-     "maxItems": 3
+     "maxItems": 4
    },
    "notation_terms": {
      "type": "array",
-     "description": "A list of up to 4 terms or phrases describing the specific symbols or notational systems (if any)used on the page.",
+     "description": "A list of up to 4 terms or phrases describing the specific symbols or notational systems (if any) used on the page.",
      "items": {
        "type": "string"
      },
-     "maxItems": 5
+     "maxItems": 4
    },
    "uniqueness":{
     "type": "string",
-    "description": "A 2-3 sentence explanation ONLY for pages that are particularly noteworthy or unexpected within its specific context or genre (i.e. those that deliberately deviate from conventional prosodic structures, employ innovative techniques that challenge traditional forms, or present highly unusual content). This field MUST be left blank for pages that are merely interesting but not genuinely distinctive.\n\nIMPORTANT: Do not speculate, infer, or add any information not directly present in the page."
+    "description": "A 2-3 sentence explanation ONLY for pages that are particularly noteworthy or unexpected within its specific context or genre (i.e. those that deliberately deviate from conventional prosodic structures, employ innovative techniques that challenge traditional forms, or present highly unusual content). This field MUST be left blank for pages that are merely interesting but not genuinely distinctive.\n\nIMPORTANT: Do not speculate, infer, or add any information not directly present in the page. Minimize filler words."
    }
  },
- "required": ["summary", "key_topics", "notation_terms", "uniqueness"]
+ "required": ["page_summary", "key_topics", "notation_terms", "uniqueness"]
 }

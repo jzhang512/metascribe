@@ -5,6 +5,7 @@ Run OCR on given images with LLM APIs.
 """
 
 from core.llm_interface import get_model_response
+from core.generate_metadata import _get_printable_time
 import os
 
 DEFAULT_SYSTEM_PROMPT = """
@@ -53,9 +54,9 @@ def generate_single_ocr(model_name: str, image_path: str, system_prompt: str = D
             "cost": cost
         }
 
-        print(f"OCRed {image_id}")
+        print(f"{_get_printable_time()} - OCRed image {image_id} with {model_name} in {elapsed_time} s")
     except Exception as e:
-        print(f"ERROR: OCRing {image_id}")
+        print(f"{_get_printable_time()} - ERROR: OCRing image {image_id} with {model_name}: {str(e)}")
 
         ocr_entry = {
             "id": image_id,

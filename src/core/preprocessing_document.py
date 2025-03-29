@@ -34,38 +34,37 @@ def binarize_image(input_image, jar_path, mode=1, size=30, percent=60, lossless=
         PIL Image: The binarized image.
     """
     
-    temp_dir = tempfile.mkdtemp()
+    with tempfile.TemporaryDirectory() as temp_dir:
 
-    # Temporarily save to disk for external processing by ZigZag
-    input_dir = os.path.join(temp_dir, "input")
-    output_dir = os.path.join(temp_dir, "output")
-    os.makedirs(input_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
+        # Temporarily save to disk for external processing by ZigZag
+        input_dir = os.path.join(temp_dir, "input")
+        output_dir = os.path.join(temp_dir, "output")
+        os.makedirs(input_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
-    temp_input_path = os.path.join(input_dir, "temp_input.jpg")
-    input_image.save(temp_input_path)
+        temp_input_path = os.path.join(input_dir, "temp_input.jpg")
+        input_image.save(temp_input_path)
 
-    # Run ZigZag via Java runtime.
-    command = [
-        "java", "-cp", jar_path, "zig.zag.ZigZag",
-        "-mode", str(mode),
-        "-size", str(size),
-        "-percent", str(percent),
-        "-lossless", lossless,
-        "-debug", debug,
-        "-input", input_dir,
-        "-output", output_dir
-    ]
+        # Run ZigZag via Java runtime.
+        command = [
+            "java", "-cp", jar_path, "zig.zag.ZigZag",
+            "-mode", str(mode),
+            "-size", str(size),
+            "-percent", str(percent),
+            "-lossless", lossless,
+            "-debug", debug,
+            "-input", input_dir,
+            "-output", output_dir
+        ]
+        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    subprocess.run(command, check=True)
-
-    # Load output
-    output_file = os.path.join(output_dir, "temp_input.jpg")
-    if os.path.exists(output_file):
-        binarized_image = Image.open(output_file).convert("RGB")
-        return binarized_image
-    else:
-        raise Exception("Binarization subprocess failed. Please try again.")
+        # Load output
+        output_file = os.path.join(output_dir, "temp_input.png")
+        if os.path.exists(output_file):      
+            binarized_image = Image.open(output_file).convert("RGB")
+            return binarized_image
+        else:
+            raise Exception("Binarization subprocess failed. Please try again.")
 
 
 def resize_image(input_image, max_width=2000, max_height=2000):
@@ -93,5 +92,9 @@ def resize_image(input_image, max_width=2000, max_height=2000):
         resized_image = input_image     # no need
 
     return resized_image
-    
 
+
+if __name__ == "__main__":
+    image = Image.open("./20_nnc1.cu01975331.jpg")
+    binarized_image = binarize_image(image, jar_path="../resources/ZigZag.jar")
+   #binarized_image.show()

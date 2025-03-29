@@ -4,7 +4,7 @@ aggregation.py
 For aggregating page-level metadata results to represent the document/work as a whole.
 """
 
-from llm_interface import get_model_response
+from core.llm_interface import get_model_response
 
 DEFAULT_SYSTEM_PROMPT = """
     You are a specialized document metadata processor creating summaries that will be converted to vector embeddings for semantic search. Your task is to produce summaries optimized for embedding performance.
@@ -22,11 +22,11 @@ DEFAULT_SYSTEM_PROMPT = """
 """
 
 DEFAULT_USER_PROMPT = """
-    Based on the following aggregated page-level document metadata, create a 3-4 sentence summary that captures the most essential elements. 
+    Based on the following aggregated page-level document metadata, create a 3-4 sentence summary that captures the most essential elements. This is document-level metadata.
     
     Minimize filler words and only summarize information explicitly provided in the metadata -- do not speculate, infer, or add any information not present.
 
-    Make sure the summary is precisely 3-4 sentences long as it will be used to generate vector embeddings.
+    Ensure the summary is exactly 3-4 sentences long and suitable for generating vector embeddings.
 
     --------------------
 """
