@@ -56,13 +56,13 @@ SUPPORTED_MODELS = {
 }
 
 
-def get_model_response(model_name: str, sys_prompt: str, user_prompt: str, image_path: str = None, structured_output_schema: dict = None, **kwargs):
+def get_model_response(model_name: str, system_prompt: str, user_prompt: str, image_path: str = None, structured_output_schema: dict = None, **kwargs):
     """
     Master function for routing which LLM provider to get response from based on the model name.
 
     Args:
         model_name (str): The name of the model to use.
-        sys_prompt (str): The system prompt to use.
+        system_prompt (str): The system prompt to use.
         user_prompt (str): The user prompt to use.
         image_path (str): The path to the image to use.
         is_structured_output (bool): Whether to use structured output.
@@ -107,7 +107,7 @@ def get_model_response(model_name: str, sys_prompt: str, user_prompt: str, image
             llm = llm.with_structured_output(structured_output_schema, include_raw = True)
 
     messages = [
-        SystemMessage(content = sys_prompt),
+        SystemMessage(content = system_prompt),
         HumanMessage(
             content = [
                 {"type": "text", "text": user_prompt}

@@ -18,11 +18,11 @@ DEFAULT_SYSTEM_PROMPT = """
     - Minimize filler words and focus on content-rich language
     - Ensure conceptual completeness rather than stylistic elegance
     
-    Your output should effectively capture the document's semantic essence for both human readers and vector-based retrieval systems.
+    Your output must effectively capture the document's semantic essence for both human readers and vector-based retrieval systems.
 """
 
 DEFAULT_USER_PROMPT = """
-    Based on the following aggregated page-level metadata of the document, create a 3-4 sentence summary that captures the most essential elements. 
+    Based on the following aggregated page-level document metadata, create a 3-4 sentence summary that captures the most essential elements. 
     
     Minimize filler words and only summarize information explicitly provided in the metadata -- do not speculate, infer, or add any information not present.
 
@@ -54,7 +54,7 @@ def generate_single_aggregated_metadata(model_name: str, concatenated_metadata: 
 
         response, elapsed_time, cost = get_model_response(
             model_name=model_name,
-            sys_prompt=system_prompt,
+            system_prompt=system_prompt,
             user_prompt=complete_user_prompt,
             **kwargs
         )

@@ -3,7 +3,7 @@
  "description": "Schema for capturing specific metadata about a page in a work related to prosody.",
  "type": "object",
  "properties": {
-   "summary": {
+   "page_summary": {
      "type": "string",
      "description": "A 3-4 sentence summary that captures both the page's semantic content and visual elements. Where relevant, highlight connections between textual and visual components.\n\nIMPORTANT: Do not speculate, infer, or add any information not directly present in the page."
    },

@@ -9,11 +9,13 @@ import os
 import json
 import tempfile
 import fitz
+from datetime import datetime
 from PIL import Image
 
 from core.generate_metadata import generate_single_metadata
 from core.ocr import generate_single_ocr
 from core.preprocessing_document import resize_image, binarize_image
+from core.aggregation import generate_single_aggregated_metadata
 
 
 class MetaScribeController:
@@ -129,9 +131,14 @@ class MetaScribeController:
         
         
         # Preprocess files serially.
-        manifest = {"files": []}
+        success_processed_count = 0
+        failed_processed_count = 0
+        files_data = []
 
         for file_name in files_to_process:
+            total_cost = 0
+            total_elapsed_time = 0
+
             print(f"Processing {file_name}")
             file_path = os.path.join(input_dir, file_name)
             file_extension = os.path.splitext(file_name)[1].lower()
@@ -207,12 +214,20 @@ class MetaScribeController:
                     print(f"Preprocessing {file_name} complete. Generating metadata and OCRing...")
                     doc_metadata_path = os.path.join(metadata_dir, f"{work_id}.jsonl")
 
+                    # Aggregation setup.
+                    aggregated_metadata = {}
+                    fields_to_aggregate = self.config["aggregation"]["included_fields"]
+
+                    for field in fields_to_aggregate:
+                        aggregated_metadata[field] = []
+
+                    # Generate metadata and OCR.
                     with open(doc_metadata_path, "a") as f:
                         for page in os.listdir(resized_dir):       # page filename is already id
                             resized_page_path = os.path.join(resized_dir, page)
                             binarized_page_path = os.path.join(binarized_dir, page)
 
-                            metadata = generate_single_metadata(
+                            page_metadata = generate_single_metadata(
                                 model_name=self.config["metadata_generation"]["llm_model"],
                                 image_path=resized_page_path,
                                 json_schema=self.config["metadata_generation"]["json_schema_path"],
@@ -220,23 +235,102 @@ class MetaScribeController:
                                 user_prompt=self.config["metadata_generation"]["user_prompt"]
                             )
 
-                            ocr_data = generate_single_ocr(
+                            total_cost += page_metadata["cost"]
+                            total_elapsed_time += page_metadata["elapsed_time"]
+
+                            page_ocr = generate_single_ocr(
                                 model_name=self.config["ocr"]["model"],
                                 image_path=binarized_page_path,
                                 system_prompt=self.config["ocr"]["system_prompt"],
                                 user_prompt=self.config["ocr"]["user_prompt"]
                             )
 
-                            if "id" in ocr_data:
-                                del ocr_data["id"]
+                            total_cost += page_ocr["cost"]
+                            total_elapsed_time += page_ocr["elapsed_time"]
 
-                            metadata["ocr"] = ocr_data
-                        # TODO: add desingated aggregated fields to a list and then do .join on them, then call aggregation function
+                            if "id" in page_ocr:
+                                del page_ocr["id"]
+
+                            page_metadata["ocr"] = page_ocr
+                            f.write(json.dumps(page_metadata) + "\n")
+                            f.flush()
+
+                            for field in fields_to_aggregate:
+                                aggregated_metadata[field].append(page_metadata[field])
     
-                    # STEP 4: Metadata aggregation.
-                
-                except Exception as e:
+                    # STEP 4: Metadata aggregation (represented at work-level).
+                    aggregation_to_save = {f"{work_id}_aggregated": True}   # to flag aggregated metadata in jsonl
+                    for field in fields_to_aggregate:
+                        concatenated_field_data = "\n\n".join(aggregated_metadata[field])
+
+                        summary_result = generate_single_aggregated_metadata(
+                            model_name=self.config["aggregation"]["llm_model"],
+                            concatenated_metadata=concatenated_field_data,
+                            system_prompt=self.config["aggregation"]["system_prompt"],
+                            user_prompt=self.config["aggregation"]["user_prompt"]
+                        )
+
+                        total_cost += summary_result["cost"]
+                        total_elapsed_time += summary_result["elapsed_time"]
+
+                        aggregation_to_save[field] = summary_result
+
+                    with open(doc_metadata_path, "a") as f:
+                        f.write(json.dumps(aggregation_to_save) + "\n")
+                        f.flush()
+
+                    # Add to manifest tally.
+                    success_processed_count += 1    
+
+                    files_data.append({
+                        "processing_date": datetime.now().isoformat(),
+                        "original_file": file_name,
+                        "metadata_file": os.path.basename(doc_metadata_path),
+                        "status": "success",
+                        "total_processing_time": total_elapsed_time,
+                        "total_cost": total_cost
+                    })
+
+                except Exception as e:      # log file processing as failed
+                    failed_processed_count += 1
+
+                    files_data.append({
+                        "processing_date": datetime.now().isoformat(),
+                        "original_file": file_name,
+                        "status": "failed",
+                        "error": str(e)
+                    })
                     continue
+
+        # STEP 5:Finish, updating or creating full run's manifest.
+        manifest_path = os.path.join(output_dir, "manifest.json")
+
+        if os.path.exists(manifest_path):
+            with open(manifest_path, "r") as f:
+                manifest = json.load(f)
+
+            # Update.
+            manifest["latest_processing_date"] = datetime.now().isoformat()
+            manifest["total_files"] += len(files_to_process)
+            manifest["successful"] += success_processed_count
+            manifest["failed"] += failed_processed_count
+            manifest["files"].extend(files_data)
+
+            with open(manifest_path, "w") as f:
+                f.write(json.dumps(manifest, indent=4))
+        else:
+            manifest = {
+                "latest_processing_date": datetime.now().isoformat(),
+                "total_files": len(files_to_process),
+                "successful": success_processed_count,
+                "failed": failed_processed_count,
+                "files": files_data
+            }
+
+            with open(manifest_path, "w") as f:
+                f.write(json.dumps(manifest, indent=4))
+
+        print(f"MetaScribe pipeline complete. {success_processed_count} files processed successfully, {failed_processed_count} files failed to process.\n\nSee {manifest_path} for details.")
 
 
     def _pix_to_PIL(self, pix):
