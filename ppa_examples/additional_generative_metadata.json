@@ -5,7 +5,7 @@
  "properties": {
    "summary": {
      "type": "string",
-     "description": "A 3-4 sentence summary that captures both the page's semantic content and visual elements. Should highlight connections between textual and visual components where relevant."
+     "description": "A 3-4 sentence summary that captures both the page's semantic content and visual elements. Where relevant, highlight connections between textual and visual components.\n\nIMPORTANT: Do not speculate, infer, or add any information not directly present in the page."
    },
    "key_topics": {
      "type": "array",
@@ -25,7 +25,7 @@
    },
    "uniqueness":{
     "type": "string",
-    "description": "A 2-3 sentence explanation ONLY for pages that are particularly noteworthy or unexpected within its specific context or genre (i.e. those that deliberately deviate from conventional prosodic structures, employ innovative techniques that challenge traditional forms, or present highly unusual content). This field MUST be left blank for pages that are merely interesting but not genuinely distinctive."
+    "description": "A 2-3 sentence explanation ONLY for pages that are particularly noteworthy or unexpected within its specific context or genre (i.e. those that deliberately deviate from conventional prosodic structures, employ innovative techniques that challenge traditional forms, or present highly unusual content). This field MUST be left blank for pages that are merely interesting but not genuinely distinctive.\n\nIMPORTANT: Do not speculate, infer, or add any information not directly present in the page."
    }
  },
  "required": ["summary", "key_topics", "notation_terms", "uniqueness"]

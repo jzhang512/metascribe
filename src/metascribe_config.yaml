@@ -14,7 +14,7 @@ preprocessing:
 metadata_generation:
   json_schema_path: "ppa_examples/additional_generative_metadata.json"
   llm_model: "gemini-2.0-flash-001"
-  system_prompt: "You are a metadata generator. Your task is to generate metadata from a given image and JSON schema."
+  system_prompt: "You are a metadata generator. Your task is to generate metadata from a given image and JSON schema.\n\nIMPORTANT: Do not speculate, infer, or add any information not directly present in the image."
   user_prompt: "Based on the image and JSON schema, generate metadata for the image."
 
 
