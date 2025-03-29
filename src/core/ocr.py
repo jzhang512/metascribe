@@ -54,7 +54,7 @@ def generate_single_ocr(model_name: str, image_path: str, system_prompt: str = D
             "cost": cost
         }
 
-        print(f"{_get_printable_time()} - OCRed image {image_id} with {model_name} in {elapsed_time} s")
+        print(f"{_get_printable_time()} - generated OCR for {image_id} with {model_name} in {elapsed_time} s")
     except Exception as e:
         print(f"{_get_printable_time()} - ERROR: OCRing image {image_id} with {model_name}: {str(e)}")
 

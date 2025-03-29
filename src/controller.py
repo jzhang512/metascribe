@@ -5,6 +5,7 @@ Main controller for MetaScribe pipeline.
 """
 
 import yaml
+import time
 import os
 import json
 import tempfile
@@ -14,7 +15,7 @@ from PIL import Image
 
 from core.generate_metadata import generate_single_metadata
 from core.ocr import generate_single_ocr
-from core.preprocessing_document import resize_image, binarize_image
+from core.preprocessing_document import resize_image, binarize_directory
 from core.aggregation import generate_single_aggregated_metadata
 
 
@@ -47,10 +48,10 @@ class MetaScribeController:
                 try:
                     with open(loc, "r") as f:
                         self.config = yaml.safe_load(f)
-                        print(f"Successfully loaded configuration from {loc}\n\n")
+                        print(f"\nSuccessfully loaded configuration from {loc}\n")
                         break
                 except Exception as e:
-                    print(f"Error loading configuration from {loc}: {e}\n\n")
+                    print(f"\nError loading configuration from {loc}: {e}\n")
                     continue
 
         if not self.config:
@@ -83,18 +84,23 @@ class MetaScribeController:
             |---- manifest. json
         """
 
-        print(f"Starting MetaScribe pipeline for {input_dir}...\n\n")
+        print(f"\nStarting MetaScribe pipeline for {input_dir}...\n")
 
         # Set up output directory.
         if output_dir is None:
             output_dir = os.path.join(os.getcwd(), "metascribe_output")
-            print(f"No output directory provided, using default: {output_dir}\n\n")
+            print(f"\nNo output directory provided, using default: {output_dir}\n")
 
         if os.path.exists(output_dir):
-            user_response = input(f"WARNING: Output directory {output_dir} already exists. Continue? (y/n): ")
-            if user_response.lower() not in ["y", "yes"]:
-                print("MetaScribe pipeline aborted by user (existing output directory).")
-                return
+            while True:
+                user_response = input(f"\nWARNING: Output directory {output_dir} already exists. Continue? (y/n): ")
+                if user_response.lower() in ["y", "yes"]:
+                    break
+                elif user_response.lower() in ["n", "no"]:
+                    print("\nMetaScribe pipeline aborted by user (existing output directory).")
+                    return
+                else:
+                    print("\nInvalid input. Please enter 'y' or 'n'.\n")
             
         os.makedirs(output_dir, exist_ok=True)
         metadata_dir = os.path.join(output_dir, "metadata")
@@ -111,7 +117,7 @@ class MetaScribeController:
             print("Exiting... no files given to process.")
             return
         else:
-            print(f"Given {len(files_to_process)} files to process.\n\n")
+            print(f"\nGiven {len(files_to_process)} files to process.\n")
 
         unaccepted_files = [
             f for f in os.listdir(input_dir)
@@ -119,10 +125,15 @@ class MetaScribeController:
         ]
         
         if unaccepted_files:
-            user_response = input(f"WARNING: Found {len(unaccepted_files)} files with unsupported extensions. Must be one of {ACCEPTABLE_EXTENSIONS}.\nContinue? (y/n): ")
-            if user_response.lower() not in ["y", "yes"]:
-                print("MetaScribe pipeline aborted by user (unsupported file extensions).")
-                return
+            while True:
+                user_response = input(f"WARNING: Found {len(unaccepted_files)} files with unsupported extensions. Must be one of {ACCEPTABLE_EXTENSIONS}.\nContinue? (y/n): ")
+                if user_response.lower() in ["y", "yes"]:
+                    break
+                elif user_response.lower() in ["n", "no"]:
+                    print("MetaScribe pipeline aborted by user (unsupported file extensions).")
+                    return
+                else:
+                    print("\nInvalid input. Please enter 'y' or 'n'.\n")
             
         
         # Check for exisiting processed files.
@@ -139,9 +150,9 @@ class MetaScribeController:
 
         for file_name in files_to_process:
             total_cost = 0
-            total_elapsed_time = 0
+            start_time = time.time()
 
-            print(f"Processing {file_name}\n\n")
+            print(f"\nProcessing {file_name}\n")
             file_path = os.path.join(input_dir, file_name)
             file_extension = os.path.splitext(file_name)[1].lower()
             work_id = os.path.splitext(file_name)[0]    # use basename as ID for naming
@@ -153,9 +164,12 @@ class MetaScribeController:
                     # STEP 1: Preprocessing -- resizing & binarization.
                     resized_dir = os.path.join(temp_dir, "resized")
                     binarized_dir = os.path.join(temp_dir, "resized_binarized")
+                    os.makedirs(resized_dir)
+                    os.makedirs(binarized_dir)
 
-                    os.makedirs(resized_dir, exist_ok=True)
-                    os.makedirs(binarized_dir, exist_ok=True)
+                    # Check for skips.
+                    skip_resize = self.config.get("preprocessing", {}).get("resize", {}).get("skip", False)
+                    skip_binarization = self.config.get("preprocessing", {}).get("binarization", {}).get("skip", False)
 
                     # Resolve ZigZag.jar path.
                     project_core = os.path.dirname(os.path.abspath(__file__))
@@ -177,20 +191,25 @@ class MetaScribeController:
 
                             # Resizing.
                             resized_path = os.path.join(resized_dir, f"{page_id}.jpg")
-                            resized_image = resize_image(image_pil,
-                                                         max_width=self.config["preprocessing"]["resize"]["max_image_width"],
-                                                         max_height=self.config["preprocessing"]["resize"]["max_image_height"])
-                            resized_image.save(resized_path)
+
+                            if skip_resize:
+                                # Save original image to resized, "skipping" resize.
+                                image_pil.save(resized_path)
+                                resized_image = image_pil
+                            else:
+                                resized_image = resize_image(image_pil,
+                                                            max_width=self.config["preprocessing"]["resize"]["max_image_width"],
+                                                            max_height=self.config["preprocessing"]["resize"]["max_image_height"])
+                                resized_image.save(resized_path)
                             
                             # Binarization.
-                            binarized_path = os.path.join(binarized_dir, f"{page_id}.jpg")
-                            binarized_image = binarize_image(
-                                resized_image,
-                                jar_path=zigzag_jar_path
-                            )
-                      
-                            binarized_image.save(binarized_path)
-         
+                            if skip_binarization:
+                                binarized_path = os.path.join(binarized_dir, f"{page_id}.jpg")
+                                resized_image.save(binarized_path)
+                        
+                        if not skip_binarization:
+                            binarize_directory(resized_dir, binarized_dir, zigzag_jar_path)
+
                         pdf_doc.close()
                         
                     else:           # only jpg, png beyond this point
@@ -199,22 +218,38 @@ class MetaScribeController:
 
                         # Resizing.
                         resized_path = os.path.join(resized_dir, f"{work_id}.jpg")  # use work_id for single images
-                        resized_image = resize_image(image_pil,
-                                                     max_width=self.config["preprocessing"]["resize"]["max_image_width"],
-                                                     max_height=self.config["preprocessing"]["resize"]["max_image_height"])
-                        resized_image.save(resized_path)
+                        if skip_resize:
+                            image_pil.save(resized_path)
+                            resized_image = image_pil
+                        else:
+                            resized_image = resize_image(image_pil,
+                                                        max_width=self.config["preprocessing"]["resize"]["max_image_width"],
+                                                        max_height=self.config["preprocessing"]["resize"]["max_image_height"])
+                            resized_image.save(resized_path)
 
+                       
                         # Binarization.
-                        binarized_path = os.path.join(binarized_dir, f"{work_id}.jpg")
-                        binarized_image = binarize_image(
-                            resized_image,
-                            jar_path=zigzag_jar_path
-                        )
-                        binarized_image.save(binarized_path)
-
+                        if skip_binarization:
+                            binarized_path = os.path.join(binarized_dir, f"{work_id}.jpg")
+                            resized_image.save(binarized_path)
+                        else:
+                            binarize_directory(resized_dir, binarized_dir, zigzag_jar_path)
+                            
 
                     # STEP 2 & 3: Metadata generation via resized images; OCR via resized & binarized images.
-                    print(f"Preprocessing {file_name} complete. Generating metadata and OCRing...\n\n")
+                    skip_ocr = self.config.get("ocr", {}).get("skip", False)
+                    
+                    if not skip_ocr:
+                        if skip_resize and skip_binarization:
+                            print(f"\nGenerating metadata and OCRing {file_name}, skipping preprocessing per config.\n")
+                        else:
+                            print(f"\nPreprocessing {file_name} complete. Generating metadata and OCRing...\n")
+                    else:
+                        if skip_resize and skip_binarization:
+                            print(f"\nSkipping preprocessing and generating metadata, skipping OCR per config.\n")
+                        else:
+                            print(f"\nPreprocessing {file_name} complete. Generating metadata, skipping OCR per config...\n")
+
                     doc_metadata_path = os.path.join(metadata_dir, f"{work_id}.jsonl")
                     # TODO: will need to check if this already exists, if so, see WHERE to pick up and start appending (make a note of this).
                     # If exists, get pages that had been processed --> what more to process? Modify line 228
@@ -246,22 +281,22 @@ class MetaScribeController:
                             )
 
                             total_cost += page_metadata["cost"]
-                            total_elapsed_time += page_metadata["elapsed_time"]
 
-                            page_ocr = generate_single_ocr(
-                                model_name=self.config["ocr"]["model"],
-                                image_path=binarized_page_path,
-                                system_prompt=self.config["ocr"]["system_prompt"],
-                                user_prompt=self.config["ocr"]["user_prompt"]
-                            )
+                            if not skip_ocr:
+                                page_ocr = generate_single_ocr(
+                                    model_name=self.config["ocr"]["model"],
+                                    image_path=binarized_page_path,
+                                    system_prompt=self.config["ocr"]["system_prompt"],
+                                    user_prompt=self.config["ocr"]["user_prompt"]
+                                )
 
-                            total_cost += page_ocr["cost"]
-                            total_elapsed_time += page_ocr["elapsed_time"]
+                                total_cost += page_ocr["cost"]
 
-                            if "id" in page_ocr:
-                                del page_ocr["id"]
+                                if "id" in page_ocr:
+                                    del page_ocr["id"]
 
-                            page_metadata["ocr"] = page_ocr
+                                page_metadata["ocr"] = page_ocr
+                           
                             f.write(json.dumps(page_metadata) + "\n")
                             f.flush()
 
@@ -269,37 +304,54 @@ class MetaScribeController:
                                 if page_metadata["metadata"][field] is not None and page_metadata["metadata"][field].strip():
                                     aggregated_metadata[field].append(page_metadata["metadata"][field])
     
+
                     # STEP 4: Metadata aggregation (represented at work-level).
-                    print(f"Metadata generation and OCR complete for {file_name}. Aggregating metadata...\n\n")
-                    aggregation_to_save = {f"{work_id}_aggregated": True}   # to flag aggregated metadata in jsonl
-                    for field in fields_to_aggregate:
 
-                        # Skip aggregation if list is empty.
-                        if not aggregated_metadata[field]:
-                            print(f"{work_id} - Skipping aggregation for {field} (no data).")
-                            aggregation_to_save[field] = {"result": "No data available for aggregation."}
-                            continue
+                    skip_aggregation = self.config.get("aggregation", {}).get("skip", False)
 
-                        concatenated_field_data = "\n\n".join(aggregated_metadata[field])
+                    if skip_aggregation:
+                        if not skip_ocr:
+                            print(f"\nMetadata generation and OCR complete for {file_name}, skipping metadata aggregation per config.\n")
+                        else:
+                            print(f"\nMetadata generation complete for {file_name}, skipping metadata aggregation per config.\n")
+                    else:
+                        if not skip_ocr:
+                            print(f"\nMetadata generation and OCR complete for {file_name}. Aggregating requested metadata...\n")
+                        else:
+                            print(f"\nMetadata generation complete for {file_name}. Aggregating requested metadata...\n")
+                            
+                        aggregation_to_save = {f"{work_id}_aggregated": True}   # to flag aggregated metadata in jsonl
+                        for field in fields_to_aggregate:
 
-                        summary_result = generate_single_aggregated_metadata(
-                            model_name=self.config["aggregation"]["llm_model"],
-                            concatenated_metadata=concatenated_field_data,
-                            system_prompt=self.config["aggregation"]["system_prompt"],
-                            user_prompt=self.config["aggregation"]["user_prompt"]
-                        )
+                            # Skip aggregation if list is empty.
+                            if not aggregated_metadata[field]:
+                                print(f"\n{work_id} - Skipping aggregation for field '{field}' (no data).\n")
+                                aggregation_to_save[field] = {"result": "No data available for aggregation."}
+                                continue
 
-                        total_cost += summary_result["cost"]
-                        total_elapsed_time += summary_result["elapsed_time"]
+                            concatenated_field_data = "\n\n".join(aggregated_metadata[field])
 
-                        aggregation_to_save[field] = summary_result
+                            summary_result = generate_single_aggregated_metadata(
+                                model_name=self.config["aggregation"]["llm_model"],
+                                concatenated_metadata=concatenated_field_data,
+                                system_prompt=self.config["aggregation"]["system_prompt"],
+                                user_prompt=self.config["aggregation"]["user_prompt"]
+                            )
 
-                    with open(doc_metadata_path, "a") as f:
-                        f.write(json.dumps(aggregation_to_save) + "\n")
-                        f.flush()
+                            total_cost += summary_result["cost"]
+
+                            aggregation_to_save[field] = summary_result
+
+                        with open(doc_metadata_path, "a") as f:
+                            f.write(json.dumps(aggregation_to_save) + "\n")
+                            f.flush()
+
 
                     # Add to manifest tally.
                     success_processed_count += 1    
+
+                    end_time = time.time()
+                    total_elapsed_time = end_time - start_time
 
                     files_data.append({
                         "processing_date": datetime.now().isoformat(),
@@ -309,7 +361,7 @@ class MetaScribeController:
                         "total_processing_time": total_elapsed_time,
                         "total_cost": total_cost
                     })
-                    print(f"Successfully processed {file_name}.\n\n")
+                    print(f"\nSuccessfully processed {file_name}.\n")
 
                 except Exception as e:      # log file processing as failed
                     failed_processed_count += 1
@@ -351,7 +403,7 @@ class MetaScribeController:
             with open(manifest_path, "w") as f:
                 f.write(json.dumps(manifest, indent=4))
 
-        print(f"MetaScribe pipeline complete. {success_processed_count} files processed successfully, {failed_processed_count} files failed to process.\n\nSee {manifest_path} for details.")
+        print(f"\nMetaScribe pipeline complete. {success_processed_count} files processed successfully, {failed_processed_count} files failed to process.\n\nSee {manifest_path} for details.")
 
 
     def _pix_to_PIL(self, pix):
@@ -374,7 +426,7 @@ class MetaScribeController:
 
     def _check_for_already_processed_files(self, output_dir, files_to_process):
         """
-        Check for already processed files and return a list of files that have not been processed.
+        Check for already successfully processed files via manifest.json and return a list of files to process.
 
         Args:
             output_dir (str): The directory to save the processed documents.
@@ -393,27 +445,32 @@ class MetaScribeController:
                     manifest = json.load(f)
                     if "files" in manifest and isinstance(manifest["files"], list):
 
-                        # Extract already processed files.
+                        # Extract already successfully processed files.
                         for file_entry in manifest["files"]:
-                            if isinstance(file_entry, dict) and "original_file" in file_entry:
+                            if isinstance(file_entry, dict) and "original_file" in file_entry and file_entry["status"] == "success":
                                 already_processed.add(file_entry["original_file"])
 
-                        print(f"Found {len(already_processed)} files that have already been processed.\n\n")
+                        print(f"\nFound {len(already_processed)} files that have already been successfully processed.\n")
 
             except Exception as e:
-                print(f"Error loading manifest from {manifest_path}: {e}\n\nWill process all {len(files_to_process)} files.\n\n")
+                print(f"\nError loading manifest from {manifest_path}: {e}\n\nWill process all {len(files_to_process)} files.\n")
                 already_processed = set()
 
          # Resume or start fresh?
         if already_processed:
-            user_response = input(f"Resume processing (y) or start fresh (n)? ")
-            if user_response.lower() in ("n", "no"):
-                already_processed = set()
-                print(f"Starting fresh... reprocessing all {len(files_to_process)} files.\n\n")
-            else:
-                print(f"Resuming processing ({len(filtered_files)} files), skipping already processed files.\n\n")
+            while True:
+                user_response = input(f"Resume processing (y) or start from scratch (n)? ")
+                if user_response.lower() in ["y", "yes", "n", "no"]:
+                    break
+                else:
+                    print("\nInvalid input. Please enter 'y' or 'n'.\n")
 
-        filtered_files = [f for f in files_to_process if not f in already_processed]
+            if user_response.lower() in ("n", "no"):
+                print(f"\nStarting afresh... reprocessing all {len(files_to_process)} files.\n")
+                return files_to_process
+            else:
+                filtered_files = [f for f in files_to_process if not f in already_processed]
+                print(f"\nResuming processing ({len(filtered_files)} files), skipping already processed files.\n")
 
         return filtered_files
         

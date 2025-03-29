@@ -27,7 +27,7 @@ def binarize_image(input_image, jar_path, mode=1, size=30, percent=60, lossless=
             4: Background removal with color foreground.
         size (int): pixel window size (default: 30)
         percent (int): weight factor (default: 60)
-        lossless (str bool): lossless binarization (default: "true")
+        lossless (str bool): lossless compression (default: "true")
         debug (str bool): debug mode (default: "false")
 
     Returns:
@@ -54,7 +54,8 @@ def binarize_image(input_image, jar_path, mode=1, size=30, percent=60, lossless=
             "-lossless", lossless,
             "-debug", debug,
             "-input", input_dir,
-            "-output", output_dir
+            "-output", output_dir,
+            "-exit", "true"
         ]
         subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -65,6 +66,43 @@ def binarize_image(input_image, jar_path, mode=1, size=30, percent=60, lossless=
             return binarized_image
         else:
             raise Exception("Binarization subprocess failed. Please try again.")
+
+
+def binarize_directory(input_dir, output_dir, jar_path, mode=1, size=30, percent=60, lossless="true", debug="false"):
+    """
+    Binarizes all images in a directory with ZigZag algorithm (Bloechler et al. 2024).
+    https://doi.org/10.1145/3685650.3685661
+
+    See binarize_image() for more details.
+
+    Args:
+        input_dir (str): The path to the directory containing the images to binarize.
+        output_dir (str): The path to the directory to save the binarized images.
+        jar_path (str): The path to the ZigZag jar file.
+
+    Result:
+        Saves binarized images to output_dir.
+    """
+    
+    command = [
+        "java", "-cp", jar_path, "zig.zag.ZigZag",
+        "-mode", str(mode),
+        "-size", str(size),
+        "-percent", str(percent),
+        "-lossless", lossless,
+        "-debug", debug,
+        "-input", input_dir,
+        "-output", output_dir,
+        "-exit", "true"
+    ]
+    subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    for filename in os.listdir(output_dir):
+        if filename.lower().endswith(".png"):
+            binarized_image = Image.open(os.path.join(output_dir, filename)).convert("RGB")
+            binarized_image.save(os.path.join(output_dir, os.path.splitext(filename)[0] + ".jpg"))
+        
+        os.remove(os.path.join(output_dir, filename))   # delete original files
 
 
 def resize_image(input_image, max_width=2000, max_height=2000):
@@ -96,5 +134,7 @@ def resize_image(input_image, max_width=2000, max_height=2000):
 
 if __name__ == "__main__":
     image = Image.open("./20_nnc1.cu01975331.jpg")
-    binarized_image = binarize_image(image, jar_path="../resources/ZigZag.jar")
+    #binarized_image = binarize_image(image, jar_path="../resources/ZigZag.jar")
+    resized_image = resize_image(image)
+    resized_image.save("./20_nnc1.cu01975331_resized.jpg")
    #binarized_image.show()
