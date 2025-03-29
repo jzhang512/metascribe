@@ -213,6 +213,8 @@ class MetaScribeController:
                     # STEP 2 & 3: Metadata generation via resized images; OCR via resized & binarized images.
                     print(f"Preprocessing {file_name} complete. Generating metadata and OCRing...")
                     doc_metadata_path = os.path.join(metadata_dir, f"{work_id}.jsonl")
+                    # TODO: will need to check if this already exists, if so, see WHERE to pick up and start appending (make a note of this).
+                    # If exists, get pages that had been processed --> what more to process? Modify line 228
 
                     # Aggregation setup.
                     aggregated_metadata = {}
@@ -259,6 +261,7 @@ class MetaScribeController:
                                 aggregated_metadata[field].append(page_metadata[field])
     
                     # STEP 4: Metadata aggregation (represented at work-level).
+                    print(f"Metadata generation and OCR complete for {file_name}. Aggregating metadata...")
                     aggregation_to_save = {f"{work_id}_aggregated": True}   # to flag aggregated metadata in jsonl
                     for field in fields_to_aggregate:
                         concatenated_field_data = "\n\n".join(aggregated_metadata[field])
@@ -290,6 +293,7 @@ class MetaScribeController:
                         "total_processing_time": total_elapsed_time,
                         "total_cost": total_cost
                     })
+                    print(f"Successfully processed {file_name}.")
 
                 except Exception as e:      # log file processing as failed
                     failed_processed_count += 1
@@ -302,7 +306,8 @@ class MetaScribeController:
                     })
                     continue
 
-        # STEP 5:Finish, updating or creating full run's manifest.
+        # STEP 5: Finish, updating or creating full run's manifest.
+        # TODO: add to manifest after each file is processed (not all at end here)... need to move this up into loop above.
         manifest_path = os.path.join(output_dir, "manifest.json")
 
         if os.path.exists(manifest_path):
