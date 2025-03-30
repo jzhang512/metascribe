@@ -117,7 +117,7 @@ class MetaScribeController:
             print("Exiting... no files given to process.")
             return
         else:
-            print(f"\nGiven {len(files_to_process)} valid files to process.\n")
+            print(f"\nGiven {len(files_to_process)} valid file(s) to process.\n")
 
         unaccepted_files = [
             f for f in os.listdir(input_dir)
@@ -150,6 +150,7 @@ class MetaScribeController:
         files_data = []
         success_processed_count = 0
         failed_processed_count = 0
+        manifest_path = os.path.join(output_dir, "manifest.json")
         for file_name in files_to_process:
             total_cost = 0
             start_time = time.time()
@@ -159,7 +160,7 @@ class MetaScribeController:
             print(f"\nProcessing {file_name}\n")
             file_path = os.path.join(input_dir, file_name)
             file_extension = os.path.splitext(file_name)[1].lower()
-            work_id = os.path.splitext(file_name)[0]    # use basename as ID for naming
+            work_id = os.path.splitext(file_name)[0]    # IMPORTANT: uses basename (without extension) as ID for naming
 
             # Temporary directory to hold temp files while processing.
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -285,10 +286,7 @@ class MetaScribeController:
 
                                     # Add previously generated metadata for aggregation later.
                                     if not skip_aggregation:
-                                        try:
-                                            order = int(entry["image_id"].split("_")[0])
-                                        except (ValueError, IndexError):    # likely from single jpg/png file without page number id at filename start
-                                            order = 0
+                                        order = self._get_page_order(entry["image_id"])
 
                                         for field in fields_to_aggregate:
                                             if entry["metadata"][field] is not None and entry["metadata"][field].strip():
@@ -296,13 +294,16 @@ class MetaScribeController:
 
                     
                     # Remaining pages to process.
-                    sorted_order = sorted(os.listdir(resized_dir), key=lambda x: int(x.split("_")[0]))
+
+                    # Assumes only pdf (potentially multiple pages), jpg, png files given. 
+                    # Multiple-page files (via pdfs) have naming: {page_number}_{work_id}.jpg (guaranteed by internal counting process); jpg, png files have naming: {work_id}.jpg where {work_id}s are the basename of the file.
+                    sorted_order = sorted(os.listdir(resized_dir), key=lambda x: int(x.split("_")[0])) if len(os.listdir(resized_dir)) > 1 else os.listdir(resized_dir)
                     remaining_pages_to_process = [page for page in sorted_order if os.path.splitext(page)[0] not in processed_pages]
 
                     if not remaining_pages_to_process:
-                        print(f"\nAll pages for {work_id} have already been processed. ")
+                        print(f"\nAll pages for {work_id} have already been processed.\n")
                         if not skip_aggregation:
-                            print("Skipping to aggregation.")
+                            print("\nSkipping to aggregation.\n")
                         sorted_order =[]
                     else:
                         print(f"\n{len(remaining_pages_to_process)} page(s) remaining to process.\n")
@@ -354,10 +355,11 @@ class MetaScribeController:
                             f.flush()
 
                             if not skip_aggregation:
-                                order = int(page.split("_")[0])
+                                for field in fields_to_aggregate:
+                                    order = self._get_page_order(page)
 
-                                if page_metadata["metadata"][field] is not None and page_metadata["metadata"][field].strip():
-                                    aggregated_metadata[field][order] = page_metadata["metadata"][field]
+                                    if page_metadata["metadata"][field] is not None and page_metadata["metadata"][field].strip():
+                                        aggregated_metadata[field][order] = page_metadata["metadata"][field]
     
 
                     # STEP 4: Metadata aggregation (represented at work-level).
@@ -380,6 +382,7 @@ class MetaScribeController:
 
                                 # Skip aggregation if dict is empty.
                                 if not aggregated_metadata[field]:
+                                
                                     print(f"\n{work_id} - Skipping aggregation for field '{field}' (no data).\n")
                                     aggregation_to_save[field] = {"result": "No data available for aggregation."}
                                     continue
@@ -432,6 +435,9 @@ class MetaScribeController:
                     successfully_processed = False
                     failed_processed_count += 1
 
+                    end_time = time.time()
+                    total_elapsed_time = end_time - start_time
+
                     files_data = [{
                         "processing_date": datetime.now().isoformat(),
                         "original_file": file_name,
@@ -441,10 +447,8 @@ class MetaScribeController:
                         "cost_before_failure": total_cost
                     }]
                     print(f"\nFailed to process {file_name}.\n")
-                    continue
 
             # STEP 5: Finish, updating or creating manifest to log file processing completion.
-            manifest_path = os.path.join(output_dir, "manifest.json")
 
             if os.path.exists(manifest_path):
                 with open(manifest_path, "r") as f:
@@ -473,8 +477,18 @@ class MetaScribeController:
                 with open(manifest_path, "w") as f:
                     f.write(json.dumps(manifest, indent=4))
 
-        print(f"\nMetaScribe pipeline complete. {success_processed_count} files processed successfully, {failed_processed_count} files failed to process.\n\nSee {manifest_path} for details.")
+        print(f"\nMetaScribe pipeline complete. {success_processed_count} file(s) processed successfully, {failed_processed_count} file(s) failed to process.\n\nSee {manifest_path} for details.")
 
+    def _get_page_order(self, image_id: str):
+        """
+        Get the order of a page from the image ID (internally named: {page_number}_{work_id}). 
+        
+        Returns 0 if the image ID is not in the correct format (happens for single jpg/png files).
+        """
+        try:
+            return int(image_id.split("_")[0])
+        except Exception as _:
+            return 0
 
     def _pix_to_PIL(self, pix):
         """
@@ -520,10 +534,10 @@ class MetaScribeController:
                             if isinstance(file_entry, dict) and "original_file" in file_entry and file_entry["status"] == "success":
                                 already_processed.add(file_entry["original_file"])
 
-                        print(f"\nFound {len(already_processed)} files that have already been successfully processed.\n")
+                        print(f"\nFound {len(already_processed)} file(s) that have already been successfully processed.\n")
 
             except Exception as e:
-                print(f"\nError loading manifest from {manifest_path}: {e}\n\nWill process all {len(files_to_process)} files.\n")
+                print(f"\nError loading manifest from {manifest_path}: {e}\n\nWill process all {len(files_to_process)} file(s).\n")
                 already_processed = set()
 
 
@@ -543,7 +557,7 @@ class MetaScribeController:
                 return None
             else:
                 if len(filtered_files) != 0:
-                    print(f"\nResuming processing ({len(filtered_files)} files), skipping already processed files...\n")
+                    print(f"\nResuming processing ({len(filtered_files)} file(s)), skipping already processed files...\n")
             
         return filtered_files
         
