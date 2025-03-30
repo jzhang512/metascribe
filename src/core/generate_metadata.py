@@ -34,6 +34,7 @@ def generate_single_metadata(model_name: str, image_path: str, json_schema: dict
 
     Returns:
         Response (dict in JSON format) from the LLM.
+        (model_name, image_id, metadata, usage, elapsed_time, cost); (model_name, image_id, error) if failed.
     """
 
     elapsed_time = None

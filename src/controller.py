@@ -138,19 +138,22 @@ class MetaScribeController:
         
         # Check for exisiting processed files.
         files_to_process = self._check_for_already_processed_files(output_dir, files_to_process)
-        if not files_to_process:
-            print("No new files to process. MetaScribe pipeline complete.")
+        if files_to_process is None:    # user stopped pipeline
+            return
+        elif not files_to_process:
+            print("No new files to process. MetaScribe pipeline complete.")    # everything already processed
             return
         
         
         # Preprocess files serially.
+        files_data = []
         success_processed_count = 0
         failed_processed_count = 0
-        files_data = []
-
         for file_name in files_to_process:
             total_cost = 0
             start_time = time.time()
+            successfully_processed = False
+            small_error_flag = False     # True if any small error occurs (API call failure, etc.), but will continue processing.
 
             print(f"\nProcessing {file_name}\n")
             file_path = os.path.join(input_dir, file_name)
@@ -234,7 +237,7 @@ class MetaScribeController:
                             resized_image.save(binarized_path)
                         else:
                             binarize_directory(resized_dir, binarized_dir, zigzag_jar_path)
-                            
+
 
                     # STEP 2 & 3: Metadata generation via resized images; OCR via resized & binarized images.
                     skip_ocr = self.config.get("ocr", {}).get("skip", False)
@@ -250,27 +253,68 @@ class MetaScribeController:
                         else:
                             print(f"\nPreprocessing {file_name} complete. Generating metadata, skipping OCR per config...\n")
 
+                    
                     doc_metadata_path = os.path.join(metadata_dir, f"{work_id}.jsonl")
-                    # TODO: will need to check if this already exists, if so, see WHERE to pick up and start appending (make a note of this).
-                    # If exists, get pages that had been processed --> what more to process? Modify line 228
+                    metadata_schema = json.load(open(self.config["metadata_generation"]["json_schema_path"]))
 
-                    # Aggregation setup.
-                    aggregated_metadata = {}
-                    fields_to_aggregate = self.config["aggregation"]["included_fields"]
+                    skip_aggregation = self.config.get("aggregation", {}).get("skip", False)
+                    if not skip_aggregation:
+                        aggregated_metadata = {}
+                        fields_to_aggregate = self.config["aggregation"]["included_fields"]
 
-                    for field in fields_to_aggregate:
-                        aggregated_metadata[field] = []
+                        for field in fields_to_aggregate:
+                            if field not in metadata_schema["properties"]:
+                                print(f"Stopping MetaScribe: requested field '{field}' to aggregate not found in metadata schema. Ensure that this field is present in the JSON schema under 'properties'.") 
+                                return
+                            aggregated_metadata[field] = {}     # dict of strings for concatenation at end
 
+                    
+                    processed_pages = set()
+                    if os.path.exists(doc_metadata_path):
+                        print(f"\nFound existing metadata file for {file_name}. Resuming from where it left off...\n")
+                        with open(doc_metadata_path, "r") as f:
+                            for line in f:
+                                entry = json.loads(line)
+
+                                if "image_id" in entry and "error" not in entry:
+                                    if "ocr" in entry:
+                                        if "error" in entry["ocr"]:
+                                            continue
+                                    processed_pages.add(entry["image_id"])
+
+                                    # Add previously generated metadata for aggregation later.
+                                    if not skip_aggregation:
+                                        try:
+                                            order = int(entry["image_id"].split("_")[0])
+                                        except (ValueError, IndexError):    # likely from single jpg/png file without page number id at filename start
+                                            order = 0
+
+                                        for field in fields_to_aggregate:
+                                            if entry["metadata"][field] is not None and entry["metadata"][field].strip():
+                                                aggregated_metadata[field][order] = entry["metadata"][field]
+
+                    
+                    # Remaining pages to process.
+                    sorted_order = sorted(os.listdir(resized_dir), key=lambda x: int(x.split("_")[0]))
+                    remaining_pages_to_process = [page for page in sorted_order if os.path.splitext(page)[0] not in processed_pages]
+
+                    if not remaining_pages_to_process:
+                        print(f"\nAll pages for {work_id} have already been processed. ")
+                        if not skip_aggregation:
+                            print("Skipping to aggregation.")
+                        sorted_order =[]
+                    else:
+                        print(f"\n{len(remaining_pages_to_process)} page(s) remaining to process.\n")
+                        sorted_order = remaining_pages_to_process
+
+    
                     # Generate metadata and OCR.
                     with open(doc_metadata_path, "a") as f:
-                        sorted_order = sorted(os.listdir(resized_dir), key=lambda x: int(x.split("_")[0]))
                        
                         for page in sorted_order:       # page filename is already id
                             
                             resized_page_path = os.path.join(resized_dir, page)
                             binarized_page_path = os.path.join(binarized_dir, page)
-
-                            metadata_schema = json.load(open(self.config["metadata_generation"]["json_schema_path"]))
 
                             page_metadata = generate_single_metadata(
                                 model_name=self.config["metadata_generation"]["llm_model"],
@@ -280,7 +324,11 @@ class MetaScribeController:
                                 user_prompt=self.config["metadata_generation"]["user_prompt"]
                             )
 
-                            total_cost += page_metadata["cost"]
+                            if "error" in page_metadata:
+                                small_error_flag = True
+
+                            if "cost" in page_metadata:
+                                total_cost += page_metadata["cost"]
 
                             if not skip_ocr:
                                 page_ocr = generate_single_ocr(
@@ -290,7 +338,11 @@ class MetaScribeController:
                                     user_prompt=self.config["ocr"]["user_prompt"]
                                 )
 
-                                total_cost += page_ocr["cost"]
+                                if "error" in page_ocr:
+                                    small_error_flag = True
+
+                                if "cost" in page_ocr:
+                                    total_cost += page_ocr["cost"]
 
                                 if "id" in page_ocr:
                                     del page_ocr["id"]
@@ -300,15 +352,14 @@ class MetaScribeController:
                             f.write(json.dumps(page_metadata) + "\n")
                             f.flush()
 
-                            for field in fields_to_aggregate:
+                            if not skip_aggregation:
+                                order = int(page.split("_")[0])
+
                                 if page_metadata["metadata"][field] is not None and page_metadata["metadata"][field].strip():
-                                    aggregated_metadata[field].append(page_metadata["metadata"][field])
+                                    aggregated_metadata[field][order] = page_metadata["metadata"][field]
     
 
                     # STEP 4: Metadata aggregation (represented at work-level).
-
-                    skip_aggregation = self.config.get("aggregation", {}).get("skip", False)
-
                     if skip_aggregation:
                         if not skip_ocr:
                             print(f"\nMetadata generation and OCR complete for {file_name}, skipping metadata aggregation per config.\n")
@@ -320,27 +371,39 @@ class MetaScribeController:
                         else:
                             print(f"\nMetadata generation complete for {file_name}. Aggregating requested metadata...\n")
                             
-                        aggregation_to_save = {f"{work_id}_aggregated": True}   # to flag aggregated metadata in jsonl
-                        for field in fields_to_aggregate:
+                        if small_error_flag:    # previous error with LLM responses; no aggregation will be done
+                            aggregation_to_save = {f"{work_id}_aggregated": False, "error": "Error occurred during metadata generation or OCR in one or more pages. Please try again after fixing the errors."}
+                        else:
+                            aggregation_to_save = {f"{work_id}_aggregated": True} 
+                            for field in fields_to_aggregate:
 
-                            # Skip aggregation if list is empty.
-                            if not aggregated_metadata[field]:
-                                print(f"\n{work_id} - Skipping aggregation for field '{field}' (no data).\n")
-                                aggregation_to_save[field] = {"result": "No data available for aggregation."}
-                                continue
+                                # Skip aggregation if dict is empty.
+                                if not aggregated_metadata[field]:
+                                    print(f"\n{work_id} - Skipping aggregation for field '{field}' (no data).\n")
+                                    aggregation_to_save[field] = {"result": "No data available for aggregation."}
+                                    continue
 
-                            concatenated_field_data = "\n\n".join(aggregated_metadata[field])
+                                # Sort aggregated data (may be out of order from errors inprevious runs).
+                                sorted_keys = sorted(aggregated_metadata[field].keys(), key=int)
+                                concatenated_field_data = "\n\n".join([aggregated_metadata[field][key] for key in sorted_keys])
 
-                            summary_result = generate_single_aggregated_metadata(
-                                model_name=self.config["aggregation"]["llm_model"],
-                                concatenated_metadata=concatenated_field_data,
-                                system_prompt=self.config["aggregation"]["system_prompt"],
-                                user_prompt=self.config["aggregation"]["user_prompt"]
-                            )
+                                summary_result = generate_single_aggregated_metadata(
+                                    model_name=self.config["aggregation"]["llm_model"],
+                                    concatenated_metadata=concatenated_field_data,
+                                    system_prompt=self.config["aggregation"]["system_prompt"],
+                                    user_prompt=self.config["aggregation"]["user_prompt"]
+                                )
 
-                            total_cost += summary_result["cost"]
+                                if "error" in summary_result:
+                                    small_error_flag = True
 
-                            aggregation_to_save[field] = summary_result
+                                if "cost" in summary_result:
+                                    total_cost += summary_result["cost"]
+
+                                aggregation_to_save[field] = summary_result
+                            
+                            if small_error_flag:
+                                aggregation_to_save[f"{work_id}_aggregated"] = False    # somewhere in aggregation, error occurred
 
                         with open(doc_metadata_path, "a") as f:
                             f.write(json.dumps(aggregation_to_save) + "\n")
@@ -348,60 +411,66 @@ class MetaScribeController:
 
 
                     # Add to manifest tally.
-                    success_processed_count += 1    
+                    successfully_processed = True
+                    success_processed_count += 1
 
                     end_time = time.time()
                     total_elapsed_time = end_time - start_time
 
-                    files_data.append({
+                    files_data = [{
                         "processing_date": datetime.now().isoformat(),
                         "original_file": file_name,
                         "metadata_file": os.path.basename(doc_metadata_path),
-                        "status": "success",
+                        "status": "success" if not small_error_flag else "failed",
                         "total_processing_time": total_elapsed_time,
                         "total_cost": total_cost
-                    })
+                    }]
                     print(f"\nSuccessfully processed {file_name}.\n")
 
-                except Exception as e:      # log file processing as failed
+                except Exception as e:      # log file processing as failed (something major went wrong; ie. setup error such that no files can be processed)
+                    successfully_processed = False
                     failed_processed_count += 1
 
-                    files_data.append({
+                    files_data = [{
                         "processing_date": datetime.now().isoformat(),
                         "original_file": file_name,
                         "status": "failed",
-                        "error": str(e)
-                    })
+                        "error": str(e),
+                        "time_spent_before_failure": total_elapsed_time,
+                        "cost_before_failure": total_cost
+                    }]
+                    print(f"\nFailed to process {file_name}.\n")
                     continue
 
-        # STEP 5: Finish, updating or creating full run's manifest.
-        # TODO: add to manifest after each file is processed (not all at end here)... need to move this up into loop above.
-        manifest_path = os.path.join(output_dir, "manifest.json")
+            # STEP 5: Finish, updating or creating manifest to log file processing completion.
+            manifest_path = os.path.join(output_dir, "manifest.json")
 
-        if os.path.exists(manifest_path):
-            with open(manifest_path, "r") as f:
-                manifest = json.load(f)
+            if os.path.exists(manifest_path):
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
 
-            # Update.
-            manifest["latest_processing_date"] = datetime.now().isoformat()
-            manifest["total_files"] += len(files_to_process)
-            manifest["successful"] += success_processed_count
-            manifest["failed"] += failed_processed_count
-            manifest["files"].extend(files_data)
+                # Update.
+                manifest["latest_processing_date"] = datetime.now().isoformat()
+                manifest["total_files"] += 1
+                if successfully_processed:
+                    manifest["successful"] += 1
+                else:
+                    manifest["failed"] += 1
+                manifest["files"].extend(files_data)
 
-            with open(manifest_path, "w") as f:
-                f.write(json.dumps(manifest, indent=4))
-        else:
-            manifest = {
-                "latest_processing_date": datetime.now().isoformat(),
-                "total_files": len(files_to_process),
-                "successful": success_processed_count,
-                "failed": failed_processed_count,
-                "files": files_data
-            }
+                with open(manifest_path, "w") as f:     # overwriting existing to update
+                    f.write(json.dumps(manifest, indent=4))
+            else:
+                manifest = {
+                    "latest_processing_date": datetime.now().isoformat(),
+                    "total_files": 1,
+                    "successful": 1 if successfully_processed else 0,
+                    "failed": 0 if successfully_processed else 1,
+                    "files": files_data
+                }
 
-            with open(manifest_path, "w") as f:
-                f.write(json.dumps(manifest, indent=4))
+                with open(manifest_path, "w") as f:
+                    f.write(json.dumps(manifest, indent=4))
 
         print(f"\nMetaScribe pipeline complete. {success_processed_count} files processed successfully, {failed_processed_count} files failed to process.\n\nSee {manifest_path} for details.")
 
@@ -456,22 +525,25 @@ class MetaScribeController:
                 print(f"\nError loading manifest from {manifest_path}: {e}\n\nWill process all {len(files_to_process)} files.\n")
                 already_processed = set()
 
+
+        filtered_files = [f for f in files_to_process if not f in already_processed]
+
          # Resume or start fresh?
         if already_processed:
             while True:
-                user_response = input(f"Resume processing (y) or start from scratch (n)? ")
+                user_response = input(f"Resume processing (y/n)? ")
                 if user_response.lower() in ["y", "yes", "n", "no"]:
                     break
                 else:
                     print("\nInvalid input. Please enter 'y' or 'n'.\n")
 
             if user_response.lower() in ("n", "no"):
-                print(f"\nStarting afresh... reprocessing all {len(files_to_process)} files.\n")
-                return files_to_process
+                print(f"\nStopped MetaScribe pipeline.\n")
+                return None
             else:
-                filtered_files = [f for f in files_to_process if not f in already_processed]
-                print(f"\nResuming processing ({len(filtered_files)} files), skipping already processed files.\n")
-
+                if len(filtered_files) != 0:
+                    print(f"\nResuming processing ({len(filtered_files)} files), skipping already processed files...\n")
+            
         return filtered_files
         
         
