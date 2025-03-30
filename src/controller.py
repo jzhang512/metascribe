@@ -117,7 +117,7 @@ class MetaScribeController:
             print("Exiting... no files given to process.")
             return
         else:
-            print(f"\nGiven {len(files_to_process)} files to process.\n")
+            print(f"\nGiven {len(files_to_process)} valid files to process.\n")
 
         unaccepted_files = [
             f for f in os.listdir(input_dir)
@@ -126,7 +126,8 @@ class MetaScribeController:
         
         if unaccepted_files:
             while True:
-                user_response = input(f"WARNING: Found {len(unaccepted_files)} files with unsupported extensions. Must be one of {ACCEPTABLE_EXTENSIONS}.\nContinue? (y/n): ")
+                example_files = ", ".join(unaccepted_files[:3]) + ("..." if len(unaccepted_files) > 3 else "")
+                user_response = input(f"WARNING: Detected {len(unaccepted_files)} file(s) with unsupported extensions in input directory ({example_files}). Must be one of {ACCEPTABLE_EXTENSIONS}.\nContinue? (y/n): ")
                 if user_response.lower() in ["y", "yes"]:
                     break
                 elif user_response.lower() in ["n", "no"]:
