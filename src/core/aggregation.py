@@ -4,7 +4,7 @@ aggregation.py
 For aggregating page-level metadata results to represent the document/work as a whole.
 """
 
-from core.llm_interface import get_model_response
+from src.core.llm_interface import get_model_response
 
 DEFAULT_SYSTEM_PROMPT = """
     You are a specialized document metadata processor creating summaries that will be converted to vector embeddings for semantic search. Your task is to produce summaries optimized for embedding performance.

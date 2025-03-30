@@ -13,10 +13,10 @@ import fitz
 from datetime import datetime
 from PIL import Image
 
-from core.generate_metadata import generate_single_metadata
-from core.ocr import generate_single_ocr
-from core.preprocessing_document import resize_image, binarize_directory
-from core.aggregation import generate_single_aggregated_metadata
+from src.core.generate_metadata import generate_single_metadata
+from src.core.ocr import generate_single_ocr
+from src.core.preprocessing_document import resize_image, binarize_directory
+from src.core.aggregation import generate_single_aggregated_metadata
 
 
 class MetaScribeController:

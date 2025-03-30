@@ -4,8 +4,8 @@ ocr.py
 Run OCR on given images with LLM APIs.
 """
 
-from core.llm_interface import get_model_response
-from core.generate_metadata import _get_printable_time
+from src.core.llm_interface import get_model_response
+from src.core.generate_metadata import _get_printable_time
 import os
 
 DEFAULT_SYSTEM_PROMPT = """

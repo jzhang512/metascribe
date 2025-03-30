@@ -4,7 +4,7 @@ generate_metadata.py
 Generate metadata from a given image and JSON schema with LLMs.
 """
 
-from core.llm_interface import get_model_response
+from src.core.llm_interface import get_model_response
 import json
 import os
 import datetime
