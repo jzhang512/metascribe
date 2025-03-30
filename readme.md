@@ -12,10 +12,11 @@ MetaScribe automates metadata creation for libraries and archives by extracting 
 
 ## Features
 
-- Structured customizable metadata schemas
+- Customizable metadata schemas
+- Configurable pipeline
 - Page-by-page extraction
-- Preview and batch processing for metadata creation
-- JSONL output format
+- Batch processing
+- Structured JSONL output format
 
 ## How It Works
 
@@ -25,28 +26,72 @@ MetaScribe automates metadata creation for libraries and archives by extracting 
 4. **Extract Metadata**: Process your full collection with a single command — fast and scalable
 5.** Export in JSONL**: Get structured metadata for each page, ready to use or archive
 
-## Basic Usage
+## Installation
 
-```python
-from metascribe import MetadataExtractor
+```console
+# Clone the repository
+git clone https://github.com/jzhang512/metascribe.git
+cd metascribe
 
-# Initialize
-extractor = MetadataExtractor(api_key="your_llm_api_key")
+# Install dependencies
+pip install -r requirements.txt
 
-# Load schema
-extractor.load_schema("schemas/basic_schema.json")
+# Set up environment variables for API keys (in .env file) or like this:
+export OPENAI_API_KEY=your_openai_key
+export ANTHROPIC_API_KEY=your_anthropic_key
+export TOGETHER_API_KEY=your_together_key
+export GOOGLE_API_KEY=your_google_key
+```
 
-# Preview single document
-preview = extractor.generate_once("document.pdf")
+## Setup & Execution
 
-# Process collection
-results = extractor.run_full("document_collection/")
+1. **Prepare Required Files**:
+   - Configure extraction settings through a YAML configuration file
+   - Define your metadata structure with a custom JSON Schema
 
-# Export
-extractor.export_results("metadata.jsonl")
+2. **Run the Extraction**:
+```console
+# Run with default settings
+python run.py input_directory
+
+# Specify custom output location
+python run.py input_directory -o custom_output
+
+# Use custom configuration
+python run.py input_directory -c my_config.yaml
 ```
 
 ## Requirements
 
-- Python 3.8+
-- Access to LLM API (OpenAI, etc.)
+- Python 3.11+
+- Access to LLM API Keys (OpenAI, Anthropic, etc.). MetaScribe works with the following LLM models:
+
+```python
+SUPPORTED_MODELS = [
+    # OpenAI Models
+    "o1-2024-12-17",
+    "gpt-4.5-preview-2025-02-27",
+    "gpt-4o-2024-11-20",
+    "gpt-4o-mini-2024-07-18",
+    "gpt-4-turbo-2024-04-09",
+    
+    # Anthropic Models
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+    "claude-3-haiku-20240307",
+    
+    # Google Models
+    "gemini-2.0-flash-001",
+    "gemini-2.0-flash-lite-001",
+    "gemini-1.5-flash-002",
+    "gemini-1.5-flash-8b-001",
+    "gemini-1.5-pro-002",
+    
+    # Together Models
+    "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
+    "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+    "Qwen/Qwen2-VL-72B-Instruct"
+]
+```
