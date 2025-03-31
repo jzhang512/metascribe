@@ -115,7 +115,7 @@ def generate_metadata_batch(model_name: str, image_folder_path: str, json_schema
             
             metadata_entry = generate_single_metadata(model_name, image_path, json_schema, image_id=image_id, **kwargs)
 
-            f.write(json.dumps(metadata_entry) + '\n')
+            f.write(json.dumps(metadata_entry, ensure_ascii=False) + '\n')
             f.flush()
 
 # Helper. 

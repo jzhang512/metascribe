@@ -116,20 +116,23 @@ def resize_image(input_image, max_width=2000, max_height=2000):
         max_height (int): The maximum height of output image. Default is 2000 px.
 
     Returns:
-        PIL Image: The resized image.
+        PIL Image: The resized image; the given image if failed to resize.
     """
    
     width, height = input_image.size
     ratio = min(max_width/width, max_height/height)
 
-    if ratio < 1:
-        new_width = int(width * ratio)
-        new_height = int(height * ratio)
-        resized_image = input_image.resize((new_width, new_height), Image.LANCZOS)
-    else:
-        resized_image = input_image     # no need
+    try:
+        if ratio < 1:
+            new_width = int(width * ratio)
+            new_height = int(height * ratio)
+            resized_image = input_image.resize((new_width, new_height), Image.LANCZOS)
+        else:
+            resized_image = input_image     # no need
 
-    return resized_image
+        return resized_image
+    except Exception as e:
+        return input_image
 
 
 if __name__ == "__main__":

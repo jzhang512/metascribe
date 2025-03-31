@@ -84,7 +84,7 @@ def get_model_response(model_name: str, system_prompt: str, user_prompt: str, im
         structured_instructions = f"""
         Make sure your output is one proper JSON object. Do not say anything else.
 
-        {json.dumps(structured_output_schema, indent=2)}
+        {json.dumps(structured_output_schema, indent=2, ensure_ascii=False)}
         """
         
         # Append the structured instructions to the system prompt

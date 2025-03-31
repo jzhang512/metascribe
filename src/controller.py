@@ -106,6 +106,37 @@ class MetaScribeController:
         metadata_dir = os.path.join(output_dir, "metadata")
         os.makedirs(metadata_dir, exist_ok=True)
 
+        # Check run_config and that current run matches previous run's config.
+        skip_resize = self.config.get("preprocessing", {}).get("resize", {}).get("skip", False)
+        skip_binarization = self.config.get("preprocessing", {}).get("binarization", {}).get("skip", False)
+        skip_ocr = self.config.get("ocr", {}).get("skip", False)
+        skip_aggregation = self.config.get("aggregation", {}).get("skip", False)
+
+        manifest_path = os.path.join(output_dir, "manifest.json")
+        if os.path.exists(manifest_path):
+            with open(manifest_path, "r") as f:
+                manifest = json.load(f)
+                if "run_config" not in manifest:
+                    print("ERROR: Manifest found but no run_config... manifest is corrupted. Please address this issue before running again.")
+                    return
+                else:
+                    if manifest["run_config"] != {
+                        "resize": not skip_resize,
+                        "binarization": not skip_binarization,
+                        "ocr": not skip_ocr,
+                        "aggregation": not skip_aggregation
+                    }:
+                        print("ERROR: run_config mismatch from previous run. Ensure that the run_config (ie. which procedures are skipped in your current yaml file) is the same as the manifest (from previous run) to continue.")
+                        return
+                    
+        # Check that json schema is valid.
+        metadata_schema = json.load(open(self.config["metadata_generation"]["json_schema_path"]))
+        fields_to_aggregate = self.config["aggregation"]["included_fields"]
+        for field in fields_to_aggregate:
+            if field not in metadata_schema["properties"]:
+                print(f"Stopping MetaScribe: requested field '{field}' to aggregate not found in metadata schema. Ensure that this field is present in the JSON schema under 'properties'.") 
+                return
+
         # Get list of files in input directory
         ACCEPTABLE_EXTENSIONS = (".png", ".jpeg", ".jpg", ".pdf")
         files_to_process = [
@@ -127,7 +158,7 @@ class MetaScribeController:
         if unaccepted_files:
             while True:
                 example_files = ", ".join(unaccepted_files[:3]) + ("..." if len(unaccepted_files) > 3 else "")
-                user_response = input(f"WARNING: Detected {len(unaccepted_files)} file(s) with unsupported extensions in input directory ({example_files}). Must be one of {ACCEPTABLE_EXTENSIONS}.\nContinue? (y/n): ")
+                user_response = input(f"WARNING: Detected {len(unaccepted_files)} file(s) with unsupported extensions in input directory ({example_files}). Must be one of {ACCEPTABLE_EXTENSIONS}. Continue? (y/n): ")
                 if user_response.lower() in ["y", "yes"]:
                     break
                 elif user_response.lower() in ["n", "no"]:
@@ -137,30 +168,58 @@ class MetaScribeController:
                     print("\nInvalid input. Please enter 'y' or 'n'.\n")
             
         
-        # Check for exisiting processed files.
-        files_to_process = self._check_for_already_processed_files(output_dir, files_to_process)
-        if files_to_process is None:    # user stopped pipeline
+        # Check for already successfully processed files.
+        files_to_process = self._check_for_already_processed_files(files_to_process, manifest_path)     # includes extension
+        if files_to_process is None:    # stop pipeline
             return
         elif not files_to_process:
             print("No new files to process. MetaScribe pipeline complete.")    # everything already processed
             return
-        
-        
+
+
         # Preprocess files serially.
-        files_data = []
-        success_processed_count = 0
-        failed_processed_count = 0
-        manifest_path = os.path.join(output_dir, "manifest.json")
+        current_success_processed_file_count = 0
+        current_failed_processed_file_count = 0
+
         for file_name in files_to_process:
-            total_cost = 0
-            start_time = time.time()
-            successfully_processed = False
-            small_error_flag = False     # True if any small error occurs (API call failure, etc.), but will continue processing.
+            previous_error_count = 0
+            if os.path.exists(manifest_path):
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
+                    if file_name in manifest["files"]:
+                        previous_error_count = manifest["files"][file_name]["processing_error_count"]
+
+            # File-level data.
+            work_id = os.path.splitext(file_name)[0]    # IMPORTANT: uses basename (without extension) as ID for naming
+            doc_metadata_path = os.path.join(metadata_dir, f"{work_id}.jsonl")
+            file_data = {
+                "processing_date": None,    # None means will update at end of file processing
+                "metadata_file": os.path.basename(doc_metadata_path),
+                "status": None,   
+                "total_processing_time": None,
+                "total_cost": None,
+                "timing_breakdown": {
+                    "preprocessing": {
+                        "resize": 0,
+                        "binarization": 0
+                    },
+                    "metadata_generation": 0,
+                    "ocr": 0,
+                    "aggregation":0
+                },
+                "cost_breakdown": {
+                    "metadata_generation": 0,
+                    "ocr": 0,
+                    "aggregation": 0
+                },
+                "processing_error_count": previous_error_count
+            }
+            current_error_count = 0     # >0 if any error occurs: small (API call failure, etc. but will continue processing) and big (halting processing a file entirely).
+
 
             print(f"\nProcessing {file_name}\n")
             file_path = os.path.join(input_dir, file_name)
             file_extension = os.path.splitext(file_name)[1].lower()
-            work_id = os.path.splitext(file_name)[0]    # IMPORTANT: uses basename (without extension) as ID for naming
 
             # Temporary directory to hold temp files while processing.
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -172,50 +231,52 @@ class MetaScribeController:
                     os.makedirs(resized_dir)
                     os.makedirs(binarized_dir)
 
-                    # Check for skips.
-                    skip_resize = self.config.get("preprocessing", {}).get("resize", {}).get("skip", False)
-                    skip_binarization = self.config.get("preprocessing", {}).get("binarization", {}).get("skip", False)
-
                     # Resolve ZigZag.jar path.
                     project_core = os.path.dirname(os.path.abspath(__file__))
                     zigzag_jar_path = os.path.join(project_core, self.config["preprocessing"]["binarization"]["jar_path"])
                     
                     # PDF files.
+                    preprocessing_start_time = time.time()
                     if file_extension == ".pdf":
                         
-                        pdf_doc = fitz.open(file_path)
-                        total_pages = len(pdf_doc)
+                        with fitz.open(file_path) as pdf_doc:
+                            total_pages = len(pdf_doc)
 
-                        for page_num in range(total_pages):
-                            page_idx = page_num + 1
-                            page_id = f"{page_idx}_{work_id}"
+                            for page_num in range(total_pages):
+                                page_idx = page_num + 1
+                                page_id = f"{page_idx}_{work_id}"
 
-                            page = pdf_doc[page_num]
-                            pix = page.get_pixmap(matrix=fitz.Matrix(self.config["preprocessing"]["pdf_image_dpi"] / 72, self.config["preprocessing"]["pdf_image_dpi"] / 72), alpha=False)
-                            image_pil = self._pix_to_PIL(pix)
+                                page = pdf_doc[page_num]
+                                pix = page.get_pixmap(matrix=fitz.Matrix(self.config["preprocessing"]["pdf_image_dpi"] / 72, self.config["preprocessing"]["pdf_image_dpi"] / 72), alpha=False)
+                                image_pil = self._pix_to_PIL(pix)
 
-                            # Resizing.
-                            resized_path = os.path.join(resized_dir, f"{page_id}.jpg")
+                                # Resizing.
+                                resized_path = os.path.join(resized_dir, f"{page_id}.jpg")
 
-                            if skip_resize:
-                                # Save original image to resized, "skipping" resize.
-                                image_pil.save(resized_path)
-                                resized_image = image_pil
-                            else:
-                                resized_image = resize_image(image_pil,
-                                                            max_width=self.config["preprocessing"]["resize"]["max_image_width"],
-                                                            max_height=self.config["preprocessing"]["resize"]["max_image_height"])
-                                resized_image.save(resized_path)
+                                if skip_resize:
+                                    # Save original image to resized, "skipping" resize.
+                                    image_pil.save(resized_path)
+                                    resized_image = image_pil
+                                else:
+                                    resized_start_time = time.time()
+                                    resized_image = resize_image(image_pil,
+                                                                max_width=self.config["preprocessing"]["resize"]["max_image_width"],
+                                                                max_height=self.config["preprocessing"]["resize"]["max_image_height"])
+                                    resized_image.save(resized_path)
+                                    resized_end_time = time.time()
+                                    file_data["timing_breakdown"]["preprocessing"]["resize"] += resized_end_time - resized_start_time
+
+                                # Binarization.
+                                if skip_binarization:
+                                    binarized_path = os.path.join(binarized_dir, f"{page_id}.jpg")
+                                    resized_image.save(binarized_path)
                             
-                            # Binarization.
-                            if skip_binarization:
-                                binarized_path = os.path.join(binarized_dir, f"{page_id}.jpg")
-                                resized_image.save(binarized_path)
-                        
-                        if not skip_binarization:
-                            binarize_directory(resized_dir, binarized_dir, zigzag_jar_path)
+                            if not skip_binarization:
+                                binarize_start_time = time.time()
+                                binarize_directory(resized_dir, binarized_dir, zigzag_jar_path)
+                                binarize_end_time = time.time()
+                                file_data["timing_breakdown"]["preprocessing"]["binarization"] += binarize_end_time - binarize_start_time
 
-                        pdf_doc.close()
                         
                     else:           # only jpg, png beyond this point
 
@@ -227,10 +288,13 @@ class MetaScribeController:
                             image_pil.save(resized_path)
                             resized_image = image_pil
                         else:
+                            resized_start_time = time.time()
                             resized_image = resize_image(image_pil,
                                                         max_width=self.config["preprocessing"]["resize"]["max_image_width"],
                                                         max_height=self.config["preprocessing"]["resize"]["max_image_height"])
                             resized_image.save(resized_path)
+                            resized_end_time = time.time()
+                            file_data["timing_breakdown"]["preprocessing"]["resize"] += resized_end_time - resized_start_time
 
                        
                         # Binarization.
@@ -238,11 +302,13 @@ class MetaScribeController:
                             binarized_path = os.path.join(binarized_dir, f"{work_id}.jpg")
                             resized_image.save(binarized_path)
                         else:
+                            binarize_start_time = time.time()
                             binarize_directory(resized_dir, binarized_dir, zigzag_jar_path)
+                            binarize_end_time = time.time()
+                            file_data["timing_breakdown"]["preprocessing"]["binarization"] += binarize_end_time - binarize_start_time
 
 
                     # STEP 2 & 3: Metadata generation via resized images; OCR via resized & binarized images.
-                    skip_ocr = self.config.get("ocr", {}).get("skip", False)
                     
                     if not skip_ocr:
                         if skip_resize and skip_binarization:
@@ -256,108 +322,138 @@ class MetaScribeController:
                             print(f"\nPreprocessing {file_name} complete. Generating metadata, skipping OCR per config...\n")
 
                     
-                    doc_metadata_path = os.path.join(metadata_dir, f"{work_id}.jsonl")
-                    metadata_schema = json.load(open(self.config["metadata_generation"]["json_schema_path"]))
 
-                    skip_aggregation = self.config.get("aggregation", {}).get("skip", False)
+                     # Check past work to recover any already processed pages.
                     if not skip_aggregation:
                         aggregated_metadata = {}
-                        fields_to_aggregate = self.config["aggregation"]["included_fields"]
+                        aggregation_cache = {}
 
                         for field in fields_to_aggregate:
-                            if field not in metadata_schema["properties"]:
-                                print(f"Stopping MetaScribe: requested field '{field}' to aggregate not found in metadata schema. Ensure that this field is present in the JSON schema under 'properties'.") 
-                                return
                             aggregated_metadata[field] = {}     # dict of strings for concatenation at end
 
-                    
-                    processed_pages = set()
+                    successfully_processed_pages = set()
+                    metadata_cache = {}    # store already successfully created metadata (avoiding rerunning)
+                    ocr_cache = {} 
                     if os.path.exists(doc_metadata_path):
                         print(f"\nFound existing metadata file for {file_name}. Resuming from where it left off...\n")
                         with open(doc_metadata_path, "r") as f:
                             for line in f:
                                 entry = json.loads(line)
 
-                                if "image_id" in entry and "error" not in entry:
-                                    if "ocr" in entry:
-                                        if "error" in entry["ocr"]:
-                                            continue
-                                    processed_pages.add(entry["image_id"])
+                                # Aggregation entry.
+                                if "image_id" not in entry:     # if more than one, only the last (most recent) one is used
+                                    aggregation_cache = entry
+                                    continue
 
+                                image_id = entry["image_id"]
+
+                                # Cache successful metadata and OCR from previous runs.
+                                if "error" not in entry:
+                                    metadata_cache[image_id] = entry
+                                   
                                     # Add previously generated metadata for aggregation later.
                                     if not skip_aggregation:
-                                        order = self._get_page_order(entry["image_id"])
+                                        order = self._get_page_order(image_id)
 
                                         for field in fields_to_aggregate:
                                             if entry["metadata"][field] is not None and entry["metadata"][field].strip():
                                                 aggregated_metadata[field][order] = entry["metadata"][field]
 
-                    
+                                if "ocr" in entry and "error" not in entry["ocr"]:
+                                    ocr_cache[image_id] = entry["ocr"]
+
+                                # Fully successful: can safely skip.
+                                if "error" not in entry:
+                                    if "ocr" in entry:
+                                        if "error" in entry["ocr"]:
+                                            continue
+                                    successfully_processed_pages.add(image_id)
+
+                                    file_data["timing_breakdown"]["ocr"] += entry["ocr"]["elapsed_time"]
+                                    file_data["cost_breakdown"]["ocr"] += entry["ocr"]["cost"]
+                                    file_data["timing_breakdown"]["metadata_generation"] += entry["elapsed_time"]
+                                    file_data["cost_breakdown"]["metadata_generation"] += entry["cost"]
+
+
                     # Remaining pages to process.
 
                     # Assumes only pdf (potentially multiple pages), jpg, png files given. 
                     # Multiple-page files (via pdfs) have naming: {page_number}_{work_id}.jpg (guaranteed by internal counting process); jpg, png files have naming: {work_id}.jpg where {work_id}s are the basename of the file.
                     sorted_order = sorted(os.listdir(resized_dir), key=lambda x: int(x.split("_")[0])) if len(os.listdir(resized_dir)) > 1 else os.listdir(resized_dir)
-                    remaining_pages_to_process = [page for page in sorted_order if os.path.splitext(page)[0] not in processed_pages]
+                    remaining_pages_to_process = [page for page in sorted_order if os.path.splitext(page)[0] not in successfully_processed_pages]   # either erroneous or not yet processed
 
                     if not remaining_pages_to_process:
                         print(f"\nAll pages for {work_id} have already been processed.\n")
                         if not skip_aggregation:
                             print("\nSkipping to aggregation.\n")
-                        sorted_order =[]
                     else:
                         print(f"\n{len(remaining_pages_to_process)} page(s) remaining to process.\n")
-                        sorted_order = remaining_pages_to_process
 
-    
+
                     # Generate metadata and OCR.
                     with open(doc_metadata_path, "a") as f:
                        
-                        for page in sorted_order:       # page filename is already id
-                            
+                        for page in remaining_pages_to_process:      
+                            page_id = os.path.splitext(page)[0]    # page filename is already id
                             resized_page_path = os.path.join(resized_dir, page)
                             binarized_page_path = os.path.join(binarized_dir, page)
 
-                            page_metadata = generate_single_metadata(
-                                model_name=self.config["metadata_generation"]["llm_model"],
-                                image_path=resized_page_path,
-                                json_schema=metadata_schema,
-                                system_prompt=self.config["metadata_generation"]["system_prompt"],
-                                user_prompt=self.config["metadata_generation"]["user_prompt"]
-                            )
-
-                            if "error" in page_metadata:
-                                small_error_flag = True
-
-                            if "cost" in page_metadata:
-                                total_cost += page_metadata["cost"]
-
-                            if not skip_ocr:
-                                page_ocr = generate_single_ocr(
-                                    model_name=self.config["ocr"]["model"],
-                                    image_path=binarized_page_path,
-                                    system_prompt=self.config["ocr"]["system_prompt"],
-                                    user_prompt=self.config["ocr"]["user_prompt"]
+                            if page_id in metadata_cache:
+                                page_metadata = metadata_cache[page_id]
+                                file_data["cost_breakdown"]["metadata_generation"] += page_metadata["cost"]
+                                file_data["timing_breakdown"]["metadata_generation"] += page_metadata["elapsed_time"]
+                            else:
+                                page_metadata = generate_single_metadata(
+                                    model_name=self.config["metadata_generation"]["llm_model"],
+                                    image_path=resized_page_path,
+                                    json_schema=metadata_schema,
+                                    system_prompt=self.config["metadata_generation"]["system_prompt"],
+                                    user_prompt=self.config["metadata_generation"]["user_prompt"]
                                 )
 
-                                if "error" in page_ocr:
-                                    small_error_flag = True
+                                if "error" in page_metadata:
+                                    current_error_count += 1
 
-                                if "cost" in page_ocr:
-                                    total_cost += page_ocr["cost"]
+                                if "cost" in page_metadata:
+                                    file_data["cost_breakdown"]["metadata_generation"] += page_metadata["cost"]
+                                if "elapsed_time" in page_metadata:
+                                    file_data["timing_breakdown"]["metadata_generation"] += page_metadata["elapsed_time"]
 
-                                if "id" in page_ocr:
-                                    del page_ocr["id"]
+                            if not skip_ocr:
+
+                                if page_id in ocr_cache:
+                                    page_ocr = ocr_cache[page_id]
+                                    file_data["cost_breakdown"]["ocr"] += page_ocr["cost"]
+                                    file_data["timing_breakdown"]["ocr"] += page_ocr["elapsed_time"]
+                                else:
+                                    page_ocr = generate_single_ocr(
+                                        model_name=self.config["ocr"]["llm_model"],
+                                        image_path=binarized_page_path,
+                                        system_prompt=self.config["ocr"]["system_prompt"],
+                                        user_prompt=self.config["ocr"]["user_prompt"]
+                                    )
+
+                                    if "error" in page_ocr:
+                                        current_error_count += 1
+
+                                    if "cost" in page_ocr:
+                                        file_data["cost_breakdown"]["ocr"] += page_ocr["cost"]
+                                    if "elapsed_time" in page_ocr:
+                                        file_data["timing_breakdown"]["ocr"] += page_ocr["elapsed_time"]
+
+                                    if "id" in page_ocr:
+                                        del page_ocr["id"]
 
                                 page_metadata["ocr"] = page_ocr
                            
-                            f.write(json.dumps(page_metadata) + "\n")
+                            f.write(json.dumps(page_metadata, ensure_ascii=False) + "\n")
                             f.flush()
 
                             if not skip_aggregation:
                                 for field in fields_to_aggregate:
                                     order = self._get_page_order(page)
 
+                                    # "field" is a valid key in page_metadata["metadata"] as guaranteed by JSON Schema.
                                     if page_metadata["metadata"][field] is not None and page_metadata["metadata"][field].strip():
                                         aggregated_metadata[field][order] = page_metadata["metadata"][field]
     
@@ -374,110 +470,128 @@ class MetaScribeController:
                         else:
                             print(f"\nMetadata generation complete for {file_name}. Aggregating requested metadata...\n")
                             
-                        if small_error_flag:    # previous error with LLM responses; no aggregation will be done
-                            aggregation_to_save = {f"{work_id}_aggregated": False, "error": "Error occurred during metadata generation or OCR in one or more pages. Please try again after fixing the errors."}
+                        if current_error_count > 0:    # previous error with LLM responses; no aggregation will be done
+                            aggregation_to_save = {f"{work_id}_aggregated": False, "error": "Error occurred during metadata generation or OCR in one or more pages. Please run again to fix those error(s)."}
                         else:
                             aggregation_to_save = {f"{work_id}_aggregated": True} 
                             for field in fields_to_aggregate:
 
-                                # Skip aggregation if dict is empty.
-                                if not aggregated_metadata[field]:
-                                
-                                    print(f"\n{work_id} - Skipping aggregation for field '{field}' (no data).\n")
-                                    aggregation_to_save[field] = {"result": "No data available for aggregation."}
-                                    continue
+                                if field in aggregation_cache and "error" not in aggregation_cache[field]:
+                                    summary_result = aggregation_cache[field]
+                                    file_data["cost_breakdown"]["aggregation"] += summary_result.get("cost", 0)
+                                    file_data["timing_breakdown"]["aggregation"] += summary_result.get("elapsed_time", 0)
+                                else:
+                                    # Skip aggregation if dict is empty.
+                                    if not aggregated_metadata[field]:
+                                        
+                                        print(f"\n{work_id} - Skipping aggregation for field '{field}' (no data).\n")
+                                        aggregation_to_save[field] = {"result": "No data available for aggregation."}
+                                        continue
 
-                                # Sort aggregated data (may be out of order from errors inprevious runs).
-                                sorted_keys = sorted(aggregated_metadata[field].keys(), key=int)
-                                concatenated_field_data = "\n\n".join([aggregated_metadata[field][key] for key in sorted_keys])
+                                    # Sort aggregated data (may be out of order from correcting errors inprevious runs).
+                                    sorted_keys = sorted(aggregated_metadata[field].keys(), key=int)
+                                    concatenated_field_data = "\n\n".join([aggregated_metadata[field][key] for key in sorted_keys])
 
-                                summary_result = generate_single_aggregated_metadata(
-                                    model_name=self.config["aggregation"]["llm_model"],
-                                    concatenated_metadata=concatenated_field_data,
-                                    system_prompt=self.config["aggregation"]["system_prompt"],
-                                    user_prompt=self.config["aggregation"]["user_prompt"]
-                                )
+                                    summary_result = generate_single_aggregated_metadata(
+                                        model_name=self.config["aggregation"]["llm_model"],
+                                        concatenated_metadata=concatenated_field_data,
+                                        system_prompt=self.config["aggregation"]["system_prompt"],
+                                        user_prompt=self.config["aggregation"]["user_prompt"]
+                                    )
 
-                                if "error" in summary_result:
-                                    small_error_flag = True
+                                    if "error" in summary_result:
+                                        current_error_count += 1
 
-                                if "cost" in summary_result:
-                                    total_cost += summary_result["cost"]
+                                    if "cost" in summary_result:
+                                        file_data["cost_breakdown"]["aggregation"] += summary_result["cost"]
+                                    if "elapsed_time" in summary_result:
+                                        file_data["timing_breakdown"]["aggregation"] += summary_result["elapsed_time"]
 
                                 aggregation_to_save[field] = summary_result
                             
-                            if small_error_flag:
-                                aggregation_to_save[f"{work_id}_aggregated"] = False    # somewhere in aggregation, error occurred
+                            if current_error_count > 0:     # somewhere in aggregation itself, error occurred
+                                aggregation_to_save[f"{work_id}_aggregated"] = False   
 
                         with open(doc_metadata_path, "a") as f:
-                            f.write(json.dumps(aggregation_to_save) + "\n")
+                            f.write(json.dumps(aggregation_to_save, ensure_ascii=False) + "\n")
                             f.flush()
 
 
                     # Add to manifest tally.
-                    successfully_processed = True
-                    success_processed_count += 1
+                    current_success_processed_file_count += 1 if current_error_count == 0 else 0
+                    current_failed_processed_file_count += 1 if current_error_count > 0 else 0
 
-                    end_time = time.time()
-                    total_elapsed_time = end_time - start_time
 
-                    files_data = [{
-                        "processing_date": datetime.now().isoformat(),
-                        "original_file": file_name,
-                        "metadata_file": os.path.basename(doc_metadata_path),
-                        "status": "success" if not small_error_flag else "failed",
-                        "total_processing_time": total_elapsed_time,
-                        "total_cost": total_cost
-                    }]
-                    print(f"\nSuccessfully processed {file_name}.\n")
+                    file_data["processing_date"] = datetime.now().isoformat()
+                    file_data["status"] = "success" if current_error_count == 0 else "failed"
+                    file_data["total_processing_time"] = file_data["timing_breakdown"]["metadata_generation"] + file_data["timing_breakdown"]["ocr"] + file_data["timing_breakdown"]["aggregation"] + file_data["timing_breakdown"]["preprocessing"]["resize"] + file_data["timing_breakdown"]["preprocessing"]["binarization"]
+                    file_data["total_cost"] = sum(file_data["cost_breakdown"].values())
+                    file_data["processing_error_count"] += current_error_count
+
+                    if current_error_count == 0:
+                        print(f"\nSuccessfully processed {file_name}.\n")
+                    else:
+                        print(f"\nFully processed {file_name} but incomplete due to {current_error_count} minor errors. Please rerun.\n")
 
                 except Exception as e:      # log file processing as failed (something major went wrong; ie. setup error such that no files can be processed)
-                    successfully_processed = False
-                    failed_processed_count += 1
+                    current_error_count += 1    # accounting for what caused the exception
+                    current_failed_processed_file_count += 1
 
-                    end_time = time.time()
-                    total_elapsed_time = end_time - start_time
+                    file_data["error"] = str(e)
 
-                    files_data = [{
-                        "processing_date": datetime.now().isoformat(),
-                        "original_file": file_name,
-                        "status": "failed",
-                        "error": str(e),
-                        "time_spent_before_failure": total_elapsed_time,
-                        "cost_before_failure": total_cost
-                    }]
-                    print(f"\nFailed to process {file_name}.\n")
+                    file_data["processing_date"] = datetime.now().isoformat()
+                    file_data["status"] = "failed"
+                    file_data["total_processing_time"] = file_data["timing_breakdown"]["metadata_generation"] + file_data["timing_breakdown"]["ocr"] + file_data["timing_breakdown"]["aggregation"] + file_data["timing_breakdown"]["preprocessing"]["resize"] + file_data["timing_breakdown"]["preprocessing"]["binarization"]
+                    file_data["total_cost"] = sum(file_data["cost_breakdown"].values())
+                    file_data["processing_error_count"] += current_error_count     
 
-            # STEP 5: Finish, updating or creating manifest to log file processing completion.
 
+                    print(f"\nFailed to process {file_name} fully.\n")
+
+
+            # STEP 5: Finished a file, updating or creating manifest to log file processing completion.
             if os.path.exists(manifest_path):
                 with open(manifest_path, "r") as f:
                     manifest = json.load(f)
 
                 # Update.
                 manifest["latest_processing_date"] = datetime.now().isoformat()
-                manifest["total_files"] += 1
-                if successfully_processed:
-                    manifest["successful"] += 1
-                else:
-                    manifest["failed"] += 1
-                manifest["files"].extend(files_data)
+                manifest["total_files"] += 1 if file_name not in manifest["files"] else 0
+                manifest["files"][file_name] = file_data
+
+                failed_count = 0
+                successful_count = 0
+                for file_name, file_data in manifest["files"].items():
+                    if file_data["status"] == "failed":
+                        failed_count += 1
+                    else:
+                        successful_count += 1
+
+                manifest["successful"] = successful_count
+                manifest["failed"] = failed_count
+
 
                 with open(manifest_path, "w") as f:     # overwriting existing to update
-                    f.write(json.dumps(manifest, indent=4))
-            else:
+                    f.write(json.dumps(manifest, indent=4, ensure_ascii=False))
+            else:       # no manifest found, create new one
                 manifest = {
                     "latest_processing_date": datetime.now().isoformat(),
+                    "run_config": {
+                        "resize": not skip_resize,
+                        "binarization": not skip_binarization,
+                        "ocr": not skip_ocr,
+                        "aggregation": not skip_aggregation
+                    },
                     "total_files": 1,
-                    "successful": 1 if successfully_processed else 0,
-                    "failed": 0 if successfully_processed else 1,
-                    "files": files_data
+                    "successful": 1 if current_error_count == 0 else 0,
+                    "failed": 0 if current_error_count == 0 else 1,
+                    "files": {file_name: file_data}
                 }
 
                 with open(manifest_path, "w") as f:
-                    f.write(json.dumps(manifest, indent=4))
+                    f.write(json.dumps(manifest, indent=4, ensure_ascii=False))
 
-        print(f"\nMetaScribe pipeline complete. {success_processed_count} file(s) processed successfully, {failed_processed_count} file(s) failed to process.\n\nSee {manifest_path} for details.")
+        print(f"\nMetaScribe pipeline complete. {current_success_processed_file_count} file(s) processed successfully, {current_failed_processed_file_count} file(s) failed to process.\n\nSee {manifest_path} for details.")
 
     def _get_page_order(self, image_id: str):
         """
@@ -508,45 +622,43 @@ class MetaScribeController:
         return image_pil
         
 
-    def _check_for_already_processed_files(self, output_dir, files_to_process):
+    def _check_for_already_processed_files(self, files_to_process, manifest_path):
         """
         Check for already successfully processed files via manifest.json and return a list of files to process.
 
         Args:
-            output_dir (str): The directory to save the processed documents.
             files_to_process (list): file list that are candidates for processing.
-
+            manifest_path (str): path to manifest.json.
         Returns:
             list: files that still need processing
         """
         
-        manifest_path = os.path.join(output_dir, "manifest.json")
         already_processed = set()
 
         if os.path.exists(manifest_path):
             try:
                 with open(manifest_path, "r") as f:
                     manifest = json.load(f)
-                    if "files" in manifest and isinstance(manifest["files"], list):
+                    if "files" in manifest and isinstance(manifest["files"], dict):
 
                         # Extract already successfully processed files.
-                        for file_entry in manifest["files"]:
-                            if isinstance(file_entry, dict) and "original_file" in file_entry and file_entry["status"] == "success":
-                                already_processed.add(file_entry["original_file"])
+                        for file_name, file_entry in manifest["files"].items():
+                            if isinstance(file_entry, dict) and file_entry["status"] == "success":
+                                already_processed.add(file_name)
 
                         print(f"\nFound {len(already_processed)} file(s) that have already been successfully processed.\n")
 
             except Exception as e:
-                print(f"\nError loading manifest from {manifest_path}: {e}\n\nWill process all {len(files_to_process)} file(s).\n")
-                already_processed = set()
+                print(f"\nError loading manifest from {manifest_path}: {e}\n\nLikely corrupted: please address this issue before running again.\n")
+                return None
 
 
         filtered_files = [f for f in files_to_process if not f in already_processed]
 
-         # Resume or start fresh?
+         # Resume?
         if already_processed:
             while True:
-                user_response = input(f"Resume processing (y/n)? ")
+                user_response = input(f"Resume processing {len(filtered_files)} more file(s) (y/n)? ")
                 if user_response.lower() in ["y", "yes", "n", "no"]:
                     break
                 else:
@@ -557,7 +669,7 @@ class MetaScribeController:
                 return None
             else:
                 if len(filtered_files) != 0:
-                    print(f"\nResuming processing ({len(filtered_files)} file(s)), skipping already processed files...\n")
+                    print(f"\nResuming processing, skipping already processed files...\n")
             
         return filtered_files
         
