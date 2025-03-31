@@ -45,11 +45,13 @@ def generate_single_ocr(model_name: str, image_path: str, system_prompt: str = D
     try:
         response, elapsed_time, cost = get_model_response(model_name, system_prompt, user_prompt, image_path, **kwargs)
 
-        ocr_text = response.content
+        if response is None or response.content is None:
+            raise Exception(f"OCR failed: {model_name} returned null response")
+        
 
         ocr_entry = {
             "id": image_id,
-            "ocr_text": ocr_text,
+            "ocr_text": response.content,
             "elapsed_time": elapsed_time,
             "cost": cost
         }

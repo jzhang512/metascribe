@@ -59,6 +59,9 @@ def generate_single_aggregated_metadata(model_name: str, concatenated_metadata: 
             **kwargs
         )
 
+        if response is None or response.content is None:
+            raise Exception(f"Aggregation failed: {model_name} returned null response")
+
         summary_entry = {
             "summary": response.content,
             "elapsed_time": elapsed_time,

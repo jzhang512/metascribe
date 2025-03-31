@@ -342,15 +342,16 @@ class MetaScribeController:
 
                                 # Aggregation entry.
                                 if "image_id" not in entry:     # if more than one, only the last (most recent) one is used
-                                    aggregation_cache = entry
-                                    continue
+                                    if self._no_none_values(entry):     # None values signify error
+                                        aggregation_cache = entry   
+                                        continue
 
                                 image_id = entry["image_id"]
 
                                 # Cache successful metadata and OCR from previous runs.
-                                if "error" not in entry:
-                                    metadata_cache[image_id] = entry
-                                   
+                                if "error" not in entry and self._no_none_values(entry):
+                                    metadata_cache[image_id] = entry    # may include "ocr" as field but will be overwritten by new OCR
+                                
                                     # Add previously generated metadata for aggregation later.
                                     if not skip_aggregation:
                                         order = self._get_page_order(image_id)
@@ -359,7 +360,7 @@ class MetaScribeController:
                                             if entry["metadata"][field] is not None and entry["metadata"][field].strip():
                                                 aggregated_metadata[field][order] = entry["metadata"][field]
 
-                                if "ocr" in entry and "error" not in entry["ocr"]:
+                                if "ocr" in entry and "error" not in entry["ocr"] and self._no_none_values(entry["ocr"]):
                                     ocr_cache[image_id] = entry["ocr"]
 
                                 # Fully successful: can safely skip.
@@ -367,12 +368,13 @@ class MetaScribeController:
                                     if "ocr" in entry:
                                         if "error" in entry["ocr"]:
                                             continue
-                                    successfully_processed_pages.add(image_id)
+                                    if self._no_none_values(entry):
+                                        successfully_processed_pages.add(image_id)
 
-                                    file_data["timing_breakdown"]["ocr"] += entry["ocr"]["elapsed_time"]
-                                    file_data["cost_breakdown"]["ocr"] += entry["ocr"]["cost"]
-                                    file_data["timing_breakdown"]["metadata_generation"] += entry["elapsed_time"]
-                                    file_data["cost_breakdown"]["metadata_generation"] += entry["cost"]
+                                        file_data["timing_breakdown"]["ocr"] += entry["ocr"]["elapsed_time"]
+                                        file_data["cost_breakdown"]["ocr"] += entry["ocr"]["cost"]
+                                        file_data["timing_breakdown"]["metadata_generation"] += entry["elapsed_time"]
+                                        file_data["cost_breakdown"]["metadata_generation"] += entry["cost"]
 
 
                     # Remaining pages to process.
@@ -673,7 +675,36 @@ class MetaScribeController:
             
         return filtered_files
         
+
+    def _no_none_values(self, d):
+        """
+        Recursively checks if a dictionary contains any None values.
         
+        Args:
+            d: Dictionary to check, which may contain nested dictionaries
+            
+        Returns:
+            bool: True if no None values exist, False if any None is found
+        """
+        if not isinstance(d, dict):
+            return d is not None
+            
+        for key, value in d.items():
+            if value is None:
+                return False
+            elif isinstance(value, dict):
+                if not self._no_none_values(value):
+                    return False
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        if not self._no_none_values(item):
+                            return False
+                    elif item is None:
+                        return False
+                        
+        return True
+    
         
         
         

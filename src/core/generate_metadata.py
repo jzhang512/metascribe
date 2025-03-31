@@ -46,6 +46,9 @@ def generate_single_metadata(model_name: str, image_path: str, json_schema: dict
 
         parsing_error = response.additional_kwargs["parsing_error"]
         parsed_data = response.additional_kwargs["parsed_data"]
+        if response is None or parsed_data is None:
+            raise Exception(f"Metadata generation failed: {model_name} returned null response")
+
         if parsing_error is not None:
             raise Exception(f"Parsing error: {parsed_data}")    # parsed_data explains why
 
