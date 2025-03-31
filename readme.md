@@ -69,7 +69,7 @@ python run.py input_directory -c my_config.yaml
 
 - **Error Handling**: MetaScribe notes errors in the `manifest.json` file and continues processing remaining documents when possible. 
 
-- **Aggregation**: Currently, the aggregated fields must be under the `'properties'` key in the JSON Schema.
+- **Aggregation**: Currently, MetaScribe can only aggregate the metadata fields defined under the `'properties'` section of your JSON Schema.
 
 ## Requirements
 
