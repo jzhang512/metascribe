@@ -63,11 +63,13 @@ python run.py input_directory -c my_config.yaml
 
 ## Important Notes
 
-- **Output Files**: Manually editing output files (manifest.json, metadata files) is not supported and may cause unexpected behavior or pipeline failures. These files contain structured data that the library depends on for proper operation.
+- **Output Files**: Manually editing output files (`manifest.json`, metadata files) is not supported and may cause unexpected behavior or pipeline failures. These files contain structured data that the library depends on for proper operation.
 
-- **Resume Processing**: When running the tool multiple times on the same data, MetaScribe tracks progress in the manifest file and allows resuming from where processing stopped. Ensure that the current run's run_config matches the previous run's config.
+- **Resume Processing**: MetaScribe tracks progress in the `manifest.json` file. So, when running MetaScribe multiple times on the same data, the run will resume from where processing stopped (or previously had errors).
 
-- **Error Handling**: The tool logs errors in the manifest file and continues processing remaining documents when possible.
+- **Error Handling**: MetaScribe notes errors in the `manifest.json` file and continues processing remaining documents when possible. 
+
+- **Aggregation**: Currently, the aggregated fields must be under the `'properties'` key in the JSON Schema.
 
 ## Requirements
 

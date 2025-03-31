@@ -1,0 +1,80 @@
+{
+    "latest_processing_date": "2025-03-31T00:34:51.413792",
+    "run_config": {
+        "resize": true,
+        "binarization": true,
+        "ocr": true,
+        "aggregation": true
+    },
+    "total_files": 3,
+    "successful": 3,
+    "failed": 0,
+    "files": {
+        "bait.pdf": {
+            "processing_date": "2025-03-31T00:34:19.542965",
+            "metadata_file": "bait.jsonl",
+            "status": "success",
+            "total_processing_time": 27.422524452209473,
+            "total_cost": 0.0035735,
+            "timing_breakdown": {
+                "preprocessing": {
+                    "resize": 0.25629377365112305,
+                    "binarization": 2.2419750690460205
+                },
+                "metadata_generation": 9.965203762054443,
+                "ocr": 14.065279960632324,
+                "aggregation": 0.8937718868255615
+            },
+            "cost_breakdown": {
+                "metadata_generation": 0.0012984000000000001,
+                "ocr": 0.00219,
+                "aggregation": 8.510000000000001e-05
+            },
+            "processing_error_count": 0
+        },
+        "testor.pdf": {
+            "processing_date": "2025-03-31T00:34:44.777393",
+            "metadata_file": "testor.jsonl",
+            "status": "success",
+            "total_processing_time": 24.559338569641113,
+            "total_cost": 0.0033924000000000003,
+            "timing_breakdown": {
+                "preprocessing": {
+                    "resize": 0.27471089363098145,
+                    "binarization": 1.7707278728485107
+                },
+                "metadata_generation": 8.60165286064148,
+                "ocr": 12.684931993484497,
+                "aggregation": 1.2273149490356445
+            },
+            "cost_breakdown": {
+                "metadata_generation": 0.0012904000000000001,
+                "ocr": 0.002016,
+                "aggregation": 8.6e-05
+            },
+            "processing_error_count": 0
+        },
+        "nnc1.cu01975331.jpg": {
+            "processing_date": "2025-03-31T00:34:51.411062",
+            "metadata_file": "nnc1.cu01975331.jsonl",
+            "status": "success",
+            "total_processing_time": 6.606641530990601,
+            "total_cost": 0.0007852,
+            "timing_breakdown": {
+                "preprocessing": {
+                    "resize": 0.056488037109375,
+                    "binarization": 0.7568802833557129
+                },
+                "metadata_generation": 1.8397009372711182,
+                "ocr": 3.2707719802856445,
+                "aggregation": 0.68280029296875
+            },
+            "cost_breakdown": {
+                "metadata_generation": 0.00024150000000000002,
+                "ocr": 0.0004954,
+                "aggregation": 4.830000000000001e-05
+            },
+            "processing_error_count": 0
+        }
+    }
+}
