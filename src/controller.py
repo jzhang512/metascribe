@@ -101,12 +101,16 @@ class MetaScribeController:
                     return
                 else:
                     print("\nInvalid input. Please enter 'y' or 'n'.\n")
-            
-        os.makedirs(output_dir, exist_ok=True)
-        metadata_dir = os.path.join(output_dir, "metadata")
-        os.makedirs(metadata_dir, exist_ok=True)
 
-        # Check run_config and that current run matches previous run's config.
+        # Check that json schema is valid.
+        metadata_schema = json.load(open(self.config["metadata_generation"]["json_schema_path"]))
+        fields_to_aggregate = self.config["aggregation"]["included_fields"]
+        for field in fields_to_aggregate:
+            if field not in metadata_schema["properties"]:
+                print(f"Stopping MetaScribe: requested field '{field}' to aggregate not found in metadata schema. Ensure that this field is present in the JSON schema under 'properties'.") 
+                return
+
+        # Check run_config and schema. Ensure that current run matches previous run's config.
         skip_resize = self.config.get("preprocessing", {}).get("resize", {}).get("skip", False)
         skip_binarization = self.config.get("preprocessing", {}).get("binarization", {}).get("skip", False)
         skip_ocr = self.config.get("ocr", {}).get("skip", False)
@@ -129,13 +133,11 @@ class MetaScribeController:
                         print("ERROR: run_config mismatch from previous run. Ensure that the run_config (ie. which procedures are skipped in your current yaml file) is the same as the manifest (from previous run) to continue.")
                         return
                     
-        # Check that json schema is valid.
-        metadata_schema = json.load(open(self.config["metadata_generation"]["json_schema_path"]))
-        fields_to_aggregate = self.config["aggregation"]["included_fields"]
-        for field in fields_to_aggregate:
-            if field not in metadata_schema["properties"]:
-                print(f"Stopping MetaScribe: requested field '{field}' to aggregate not found in metadata schema. Ensure that this field is present in the JSON schema under 'properties'.") 
-                return
+                current_schema = os.path.basename(self.config["metadata_generation"]["json_schema_path"])
+                if manifest["schema_used"] != current_schema:
+                    print(f"ERROR: schema mismatch from previous run. Ensure that the JSON schema used in your current yaml file ({current_schema}) is the same as the manifest ({manifest['schema_used']}) to continue.")
+                    return
+                
 
         # Get list of files in input directory
         ACCEPTABLE_EXTENSIONS = (".png", ".jpeg", ".jpg", ".pdf")
@@ -176,6 +178,10 @@ class MetaScribeController:
             print("No new files to process. MetaScribe pipeline complete.")    # everything already processed
             return
 
+        # All checks passed, create new directories.
+        os.makedirs(output_dir, exist_ok=True)
+        metadata_dir = os.path.join(output_dir, "metadata")
+        os.makedirs(metadata_dir, exist_ok=True)
 
         # Preprocess files serially.
         current_success_processed_file_count = 0
@@ -578,6 +584,7 @@ class MetaScribeController:
             else:       # no manifest found, create new one
                 manifest = {
                     "latest_processing_date": datetime.now().isoformat(),
+                    "schema_used": os.path.basename(self.config["metadata_generation"]["json_schema_path"]),
                     "run_config": {
                         "resize": not skip_resize,
                         "binarization": not skip_binarization,
