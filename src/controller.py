@@ -531,7 +531,7 @@ class MetaScribeController:
                     if current_error_count == 0:
                         print(f"\nSuccessfully processed {file_name}.\n")
                     else:
-                        print(f"\nFully processed {file_name} but incomplete due to {current_error_count} minor errors. Please rerun.\n")
+                        print(f"\nFully processed {file_name} but incomplete due to {current_error_count} non-client-side errors (e.g., server failure from LLM providers). Please rerun.\n")
 
                 except Exception as e:      # log file processing as failed (something major went wrong; ie. setup error such that no files can be processed)
                     current_error_count += 1    # accounting for what caused the exception
