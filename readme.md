@@ -24,7 +24,7 @@ MetaScribe automates metadata creation for libraries and archives by extracting 
 2. **Define Your Schema**: Specify what metadata you want using a customizable JSON Schema
 3. **Preview the Output**: Run a quick sample to check accuracy and adjust before full processing
 4. **Extract Metadata**: Process your full collection with a single command — fast and scalable
-5.** Export in JSONL**: Get structured metadata for each page, ready to use or archive
+5. ** Export in JSONL**: Get structured metadata for each page, ready to use or archive
 
 ## Installation
 
