@@ -14,7 +14,7 @@ __version__ = "1.0.0"
 def main():
     """Main entry point for the MetaScribe application."""
     parser = argparse.ArgumentParser(
-            description="MetaScribe: An LLM-powered tool for extracting structured metadata from digital collections",
+            description="MetaScribe: An LVLM-powered tool for creating structured descriptive metadata from digital collections",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
